@@ -2,15 +2,27 @@
 
 This document is the compact, machine-oriented contract for agents operating this repository. For end-user setup, read [README.md](README.md).
 
+## Installation routing
+
+This repository contains two independent skills. Do not install one as a dependency of the other, and do not install both by default.
+
+If the user's scenario is unclear, ask whether they want:
+
+1. Codex to connect to and directly control a DG-LAB device through MCP; or
+2. Codex to write or review application code that integrates the `dglab-kit` SDK.
+
+Install `skills/dglab-control` plus the local MCP server for option 1. Install only `skills/dglab-kit-sdk` for option 2; the target application manages its own `dglab-kit` package dependency. Install both only when the user explicitly needs both scenarios, and keep their configuration and state independent.
+
 ## Purpose and boundaries
 
-The project exposes a local stdio MCP server for DG-LAB V4 and a Codex skill that maps natural-language requests to MCP calls.
+The project exposes a local stdio MCP server for DG-LAB V4, a control skill that maps natural-language requests to MCP calls, and a separate SDK development skill.
 
 - Use the MCP tools; do not construct protocol frames or create a second socket controller.
 - The MCP owns relay state, controller state, target selection, command queues, and enforcement of configured ceilings.
 - The skill owns intent validation, user-facing selection, and pre-call safety checks.
 - The server does not start a network listener unless embedded relay mode is explicitly selected.
 - Embedded relay mode requires Bun because it uses `Bun.serve()`; remote mode also works on Node.js 22+.
+- `dglab-kit-sdk` edits application code and does not call or depend on this MCP server.
 
 Relevant files:
 
@@ -24,10 +36,13 @@ Relevant files:
 | `skills/dglab-control/references/intent-contract.md` | Natural-language normalization |
 | `skills/dglab-control/references/safety.md` | Mandatory safety policy |
 | `skills/dglab-control/references/protocol.md` | SDK and V4 protocol facts |
+| `skills/dglab-kit-sdk/SKILL.md` | SDK integration workflow and best practices |
+| `skills/dglab-kit-sdk/references/v4-api.md` | Public SDK V4 API contract |
+| `skills/dglab-kit-sdk/references/implementation-patterns.md` | Lifecycle, safety, scheduling, and cleanup patterns |
 
-When documentation and runtime code differ, treat MCP schemas and validation in `mcp/src/index.ts` and `mcp/src/controller.ts` as authoritative.
+For MCP control, treat schemas and validation in `mcp/src/index.ts` and `mcp/src/controller.ts` as authoritative. For SDK development, treat the target project's installed `dglab-kit` exports and types as authoritative.
 
-## Installation and launch
+## MCP control installation and launch
 
 Preferred runtime:
 
@@ -60,6 +75,8 @@ DGLAB_RELAY = "wss://ws.dungeon-lab.cn/"
 ```
 
 Install or link `skills/dglab-control` into the Codex skills directory. Invoke it as `$dglab-control`.
+
+For SDK development instead, install or link only `skills/dglab-kit-sdk` into the Codex skills directory and invoke it as `$dglab-kit-sdk`. Do not configure this MCP server for that scenario unless the user separately requests direct device control.
 
 ## Required agent workflow
 
