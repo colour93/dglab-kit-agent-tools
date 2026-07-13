@@ -1,4 +1,4 @@
-# DG-LAB Kit MCP & Skill
+# DG-LAB Kit Agent Tools
 
 让 Codex 通过自然语言安全地连接和控制 DG-LAB 设备。
 
