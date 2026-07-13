@@ -1,72 +1,99 @@
-# DG-LAB protocol reference
+# DG-LAB protocol and SDK reference
 
-Use this reference when creating a connection, QR code, or command implementation.
+Read this file when connecting, pairing, selecting devices, or mapping an intent to a `dglab-kit` API.
 
-## Defaults
+## V4 first, with explicit verification
 
-| Protocol | Default | Pairing model |
-| --- | --- | --- |
-| V4 | `wss://ws.dungeon-lab.cn/` | One controller can pair with multiple APPs; use `clientId` and `slotId` for controls. |
-| V3 | `wss://ws.dungeon-lab.cn/` | Legacy one-controller-to-one-APP protocol. |
+Create V4 by omitting `version` (the SDK default) or using `DGLAB_SOCKET_VERSION.V4`.
 
-Pass a user-specified relay URL to `new DglabSocket({ url })`. Do not silently replace it with the default.
+```ts
+import { DGLAB_SOCKET_STATE, DglabSocket } from 'dglab-kit';
 
-## SDK construction
+const socket = new DglabSocket({ url: 'wss://ws.dungeon-lab.cn/' });
+const { targetId } = await socket.connect();
+
+if (!targetId || socket.state !== DGLAB_SOCKET_STATE.WaitingForPeer) {
+  throw new Error('V4 hello was not completed');
+}
+```
+
+`connect()` resolves after the V4 relay sends `hello`. This validates the controller-side V4 handshake, not a controllable APP. On `client-attached`, call `await socket.requestDevices(clientId)`; optionally call `await socket.ping(clientId)` to verify the APP RPC path. If either step fails, stop and ask the user to select another relay or explicitly choose V3. Never automatically retry as V3.
+
+Listen for `error`, `close`, `client-disconnected`, `devices`, and `device`. A V4 controller can have multiple APPs; `clientId` identifies an APP and `slotId` identifies a device in it. For one-off HTTP dispatch after pairing, follow [transport.md](transport.md).
+
+## Device eligibility and waveform choice
+
+Use `socket.getClient(clientId)?.devices` after the APP snapshot/event stream is available. Select by explicit user choice or a requested type; never by array position.
+
+Reject or ask for confirmation when the latest device data explicitly reports any of the following:
+
+- `slotState.hasDevice === false`;
+- `props.connectState === 'disconnected'`;
+- the selected channel is muted, overheated, damaged, or blocked.
+
+Use waveform collections only for compatible types:
+
+| Device type | Waveforms |
+| --- | --- |
+| `COYOTE_020`, `COYOTE_030` | `COYOTE_WAVEFORMS` |
+| `OVC_1` | `OVC_WAVEFORMS` |
+| `BMTR_1` | No waveform or intensity command through this skill |
+
+If no eligible compatible device exists, report the discovered APP/device status and ask the user to pair, connect, or select another device.
+
+## V4 commands
+
+Import `V4Channel`. Every device operation needs `(clientId, slotId, channel)`.
+
+```ts
+import {
+  COYOTE_WAVEFORM,
+  COYOTE_WAVEFORMS,
+  V4Channel,
+} from 'dglab-kit';
+
+await socket.addIntensity(clientId, slotId, V4Channel.A, 2);
+await socket.reduceStrength(clientId, slotId, V4Channel.A, 2);
+await socket.setTempIntensity(clientId, slotId, V4Channel.A, 10, 2_000);
+await socket.sendPulse(
+  clientId,
+  slotId,
+  V4Channel.A,
+  2_000,
+  COYOTE_WAVEFORMS[COYOTE_WAVEFORM.BUBBLE].raw,
+  { immediate: true },
+);
+await socket.clearOperate(clientId, { slotId, channel: V4Channel.A });
+```
+
+`reduceStrength()` is the documented V4 API and sends a negative relative adjustment through `addIntensity()`. V4 `resetIntensity()` only sets an absolute value of `0`; do not represent it as a general absolute-strength setter. `device.op` resolves only after its task completes, is cleared, replaced, or cancelled, so use a bounded duration and handle rejected promises.
+
+## V3 compatibility
+
+Use V3 only when explicitly requested:
 
 ```ts
 import {
   DGLAB_SOCKET_VERSION,
   DglabSocket,
+  V3Channel,
 } from 'dglab-kit';
 
-const v4 = new DglabSocket({
-  url: 'wss://ws.dungeon-lab.cn/',
-});
-
-const v3 = new DglabSocket({
+const socket = new DglabSocket({
   url: 'wss://ws.dungeon-lab.cn/',
   version: DGLAB_SOCKET_VERSION.V3,
 });
 ```
 
-`connect()` returns `targetId`; V4 also returns a `secret` for the relay HTTP API. Treat `secret` as a credential: do not render it into a QR or reveal it in normal output.
+V3 supports one paired APP, `setStrength`, `addStrength`, `reduceStrength`, `sendPulse`, and `clearPulse`. It has no V4 device discovery or per-device selection. Do not create a timer-based V3 approximation of a temporary intensity unless the user explicitly asks for it; apply the same duration cap and clear it on timeout.
 
-## Pairing addresses and QR payloads
+## QR payloads and lifetime
 
-Use the controller's `targetId`, not an APP `clientId`.
+Use the controller `targetId`, never an APP `clientId` or V4 `secret`.
 
 | Version | APP socket address | QR payload |
 | --- | --- | --- |
 | V4 | `<relay>?tid=<targetId>` | `https://dungeon-lab.cn/s/?v=1&action=socket&url=<encoded APP socket address>` |
 | V3 | `<relay>/<targetId>` | `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#<APP socket address>` |
 
-For V4, use `URL.searchParams.set('tid', targetId)` to preserve an existing relay path or query. For V3, remove trailing slashes before appending `/<targetId>`.
-
-Generate a QR PNG with `qrcode` and render the generated file in the chat response. The pairing address and QR are short-lived: regenerate them after the controller reconnects.
-
-## Command APIs
-
-### V4
-
-After `client-attached`, call `requestDevices(clientId)`. Use the returned `device.slotId` with:
-
-- `resetIntensity(clientId, slotId, channel)`
-- `addIntensity(clientId, slotId, channel, value)`
-- `reduceStrength(clientId, slotId, channel, value)`
-- `setTempIntensity(clientId, slotId, channel, value, durationMs)`
-- `sendPulse(clientId, slotId, channel, durationMs, frames)`
-- `clearOperate(clientId, { slotId, channel })`
-
-Use `V4Channel.A` or `V4Channel.B`. Obtain waveform `frames` from the exported `COYOTE_WAVEFORMS` or `OVC_WAVEFORMS` collections.
-
-### V3
-
-Use `V3Channel.A` or `V3Channel.B` with:
-
-- `setStrength(channel, value)`
-- `addStrength(channel, step)`
-- `reduceStrength(channel, step)`
-- `sendPulse({ channel: 'A' | 'B', time: seconds, data: frames })`
-- `clearPulse(channel)`
-
-V3 does not provide V4-style device discovery or per-device selection.
+Use `URL.searchParams.set('tid', targetId)` for V4 and remove trailing slashes before appending the V3 path segment. A QR is valid only for its current controller connection. Mark it stale and regenerate it after reconnect, target ID change, relay change, protocol change, `idle_timeout`, or socket close.

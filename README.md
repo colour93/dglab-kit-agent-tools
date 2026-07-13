@@ -7,9 +7,12 @@
 ## 目录
 
 - `dglab-control/`：可安装的 skill。
-  - `SKILL.md`：控制流程与自然语言映射规则。
+  - `SKILL.md`：V4 校验、配对、会话与控制短流程。
   - `scripts/generate-pairing-qr.mjs`：使用 `qrcode` 生成配对 PNG。
-  - `references/protocol.md`：V3/V4 连接、配对与 API 参考。
+  - `references/intent-contract.md`：聊天触发和会话选择规则。
+  - `references/safety.md`：限幅、时长、断开清理与设备状态校验。
+  - `references/transport.md`：V4 单次指令的 HTTP/WS 路由与鉴权规则。
+  - `references/protocol.md`：V3/V4 连接、配对、设备筛选与 API 参考。
 
 ## 使用
 

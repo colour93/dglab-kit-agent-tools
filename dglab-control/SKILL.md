@@ -1,81 +1,64 @@
 ---
 name: dglab-control
-description: Control paired DG-LAB devices from natural-language instructions with the dglab-kit npm package. Use when building or operating a DG-LAB controller, connecting a V3 or V4 relay, discovering paired devices, translating requests into strength, temporary-intensity, waveform, or clear commands, or generating a scannable DG-LAB pairing QR code. Default to V4 and the official relay; support a user-specified relay or explicit V3 request.
+description: Control paired DG-LAB devices from natural-language instructions with the dglab-kit npm package. Use when building or operating a DG-LAB controller, connecting a V3 or V4 relay, discovering paired devices, translating requests into bounded strength, temporary-intensity, waveform, or stop commands, or generating a scannable DG-LAB pairing QR code. Default to verified V4 and the official relay; support a user-specified relay or explicit V3 request.
 ---
 
 # DG-LAB Control
 
-Use `dglab-kit`; do not handcraft protocol frames. Prefer Bun and fall back to Node.js only when Bun is unavailable.
+Use `dglab-kit`; never handcraft protocol frames. Prefer Bun and fall back to Node.js only when Bun is unavailable.
 
-## Prepare
+## Non-negotiable rules
 
-Install the SDK and mature `qrcode` renderer in the controller project:
+- Default to V4 at `wss://ws.dungeon-lab.cn/`; preserve a user-provided `ws://` or `wss://` relay. Do not silently downgrade to V3.
+- Treat a socket as V4-capable only after `connect()` receives `hello`, an APP attaches, and `requestDevices(clientId)` succeeds. Offer a relay change or explicit V3 selection if this fails.
+- Use only the active session target: `clientId`, `slotId`, `deviceType`, channel, and selected transport. Stop immediately on a direct stop/clear/zero request.
+- Apply [references/safety.md](references/safety.md) before every device command. Clear selected tasks before an intentional disconnect; invalidate session state on any disconnect.
+- Keep protocol facts in [references/protocol.md](references/protocol.md), transport routing in [references/transport.md](references/transport.md), and intent normalization in [references/intent-contract.md](references/intent-contract.md).
+
+## Connect and pair
+
+Install dependencies in the controller project:
 
 ```bash
 bun add dglab-kit qrcode
 ```
 
-Use `npm install dglab-kit qrcode` only when Bun is unavailable. Read [references/protocol.md](references/protocol.md) before choosing a protocol or forming a pairing URL.
+Use `npm install dglab-kit qrcode` only when Bun is unavailable.
 
-Default to V4 and `wss://ws.dungeon-lab.cn/`. Use a user-provided `ws://` or `wss://` relay unchanged. Switch to V3 only when the user explicitly requests it or needs legacy compatibility.
-
-## Pair before control
-
-1. Connect a `DglabSocket` controller.
-2. Receive `targetId` from `await socket.connect()`.
-3. Generate a PNG with `scripts/generate-pairing-qr.mjs`, then show the resulting local image to the user with Markdown. Do not expose `secret` in the QR or in user-facing output.
-4. Wait for `client-attached`; for V4, call `requestDevices(clientId)` and identify the desired `slotId` before sending a device command.
-
-Run the QR helper from a project where `qrcode` is installed:
+1. Create a V4 `DglabSocket` and await `connect()`.
+2. Generate a QR PNG with `scripts/generate-pairing-qr.mjs` from its `targetId`.
+3. Render the generated absolute PNG path in the response. Never put `secret` in user-facing output.
+4. On `client-attached`, verify the APP with `requestDevices(clientId)` and select an eligible device before control.
 
 ```bash
 bun scripts/generate-pairing-qr.mjs --target-id "$TARGET_ID" --output ./dglab-pairing.png
 ```
 
-Pass `--server <ws-url>` for a custom relay and `--version v3` only for V3. After creation, present `![DG-LAB 配对二维码](/absolute/path/dglab-pairing.png)` in the response.
+Pass `--server <ws-url>` for a custom relay and `--version v3` only for an explicit V3 session. Regenerate the QR after every controller reconnect, relay/protocol change, or `targetId` change; discard old images and URLs.
 
-## Translate natural language
+## Select a transport
 
-Resolve omitted details from the current session only. Treat a direct stop/clear request as highest priority.
+Use V4 WebSocket for connection, pairing, device discovery, state/events, or a user-selected `ws` command. For a single V4 control RPC after pairing, prefer HTTP when the live controller has a `secret` and a valid HTTP endpoint. Respect an explicit `http` or `ws` choice. In automatic mode, use HTTP only for one-off dispatch; otherwise use WebSocket. HTTP never replaces the live controller WebSocket.
 
-| User intent | V4 operation | V3 operation |
-| --- | --- | --- |
-| Stop, clear, zero | `clearOperate()` or `resetIntensity()` | `clearPulse()` or `setStrength(..., 0)` |
-| Increase/decrease | `addIntensity()` / `reduceStrength()` | `addStrength()` / `reduceStrength()` |
-| Set a value briefly | `setTempIntensity()` | State the V3 limitation and implement a bounded timer only if requested |
-| Play a named built-in waveform | `sendPulse()` with SDK waveform frames | `sendPulse({ channel, time, data })` |
+## Handle natural-language commands
 
-Use only the user-selected paired APP, device, and channel. If there is more than one V4 APP or device and the request does not identify one, ask which target to control. Preserve explicit intensity and duration values; otherwise request the missing action parameters rather than inventing them. Prefer temporary commands for time-bounded requests. Always provide an immediate stop path.
+Accept hardware control only through the active controller interaction described in [references/intent-contract.md](references/intent-contract.md). Normalize the message, resolve the transport, validate the selected target and safety policy, then state the target, transport, and bounded command before sending it.
 
-## Use the SDK APIs
+| Intent | Missing data |
+| --- | --- |
+| stop / clear / zero | Execute immediately for the active target; ask only if no target exists. |
+| custom or ambiguous wording | Ask the user to restate it as a supported command with explicit parameters. |
+| increase / decrease | Require an explicit delta. |
+| temporary intensity | Require an explicit intensity and duration. |
+| waveform | Require a compatible waveform and duration. |
+| select device / channel | Ask for an unambiguous selection. |
 
-For V4, use `V4Channel.A` or `V4Channel.B` and pass both `clientId` and `slotId` to every device operation. For V3, use `V3Channel.A` or `V3Channel.B`; V3 supports one paired APP and has no device discovery.
+Persist a confirmed target only for the current live session. Reuse it for later messages, but invalidate it on APP/device removal, controller reconnect, relay/protocol change, or disconnect. If multiple eligible APPs or devices exist and none is selected, ask the user instead of choosing `devices[0]`.
 
-```ts
-import {
-  COYOTE_WAVEFORM,
-  COYOTE_WAVEFORMS,
-  DglabSocket,
-  V4Channel,
-} from 'dglab-kit';
+## Send through the SDK
 
-const socket = new DglabSocket({ url: 'wss://ws.dungeon-lab.cn/' });
-const { targetId } = await socket.connect();
+For V4, use `V4Channel.A` or `V4Channel.B` and pass `clientId` plus `slotId` to every operation. `reduceStrength()` is the SDK's actual V4 method name for relative decrements. Use `clearOperate(clientId, { slotId, channel })` to stop selected work.
 
-socket.on('client-attached', async (clientId) => {
-  const { devices } = await socket.requestDevices(clientId);
-  const slotId = devices[0]?.slotId;
-  if (!slotId) return;
+For V3, use `V3Channel.A` or `V3Channel.B`. V3 has one paired APP and no per-device discovery; retain the same target and safety rules, but do not emulate V4 discovery.
 
-  await socket.setTempIntensity(clientId, slotId, V4Channel.A, 20, 3_000);
-  await socket.sendPulse(
-    clientId,
-    slotId,
-    V4Channel.A,
-    1_000,
-    COYOTE_WAVEFORMS[COYOTE_WAVEFORM.BUBBLE].raw,
-  );
-});
-```
-
-Keep the controller process running while it is paired. On disconnect or a stop request, clear the relevant operation before disposing the session where possible.
+On normal shutdown, clear the active V4 task first, then call `disconnect()` or `destroy()`. After a close event, do not attempt to send; report the command as not delivered and require a fresh pairing session.
