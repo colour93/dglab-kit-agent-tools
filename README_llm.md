@@ -71,7 +71,7 @@ tool_timeout_sec = 30
 
 [mcp_servers.dglab.env]
 DGLAB_RELAY_MODE = "remote"
-DGLAB_RELAY = "wss://ws.dungeon-lab.cn/"
+DGLAB_RELAY = "wss://trex.dungeon-lab.cn/v4"
 ```
 
 Install or link `skills/dglab-control` into the Codex skills directory. Invoke it as `$dglab-control`.
@@ -80,9 +80,9 @@ For SDK development instead, install or link only `skills/dglab-kit-sdk` into th
 
 ## Required agent workflow
 
-1. Resolve relay mode. Default to `remote` and `wss://ws.dungeon-lab.cn/` unless the user chose another relay.
+1. Resolve relay mode. Default to `remote` and `wss://trex.dungeon-lab.cn/v4` unless the user chose another relay.
 2. Call `dglab_connect`. Use `qrOutput: "both"` for image-capable clients and `"terminal"` only for text-only CLI clients. Omitting the option also defaults to `"both"`.
-3. Put an actual image or terminal QR in the user-visible response and always show the returned plain-text `Connection URL` directly below it. Never claim a QR is “above” unless it is visibly present.
+3. In Codex Desktop, copy `structuredContent.qrImage.markdown` exactly into the user-visible response. Otherwise surface the returned MCP image or terminal QR. Always show the returned plain-text `Connection URL` directly below the visible QR. Never claim a QR is “above” unless it is visibly present.
 4. After the APP scans the QR, call `dglab_status` until device slots are discovered.
 5. If multiple APPs or device slots exist, ask the user to choose. Never select by array order.
 6. Call `dglab_select_target` with exact `clientId`, `slotId`, and channel.
@@ -102,7 +102,7 @@ A new task has no selected device. Selection is process-local and must not be as
 | `dglab_list_relay_addresses` | `port?`, `prefix?` | Lists loopback/private IPv4 candidates. If no port is configured, reserves one random port in `49152..65535` for the next embedded start; does not listen. |
 | `dglab_start_relay` | embedded relay fields | Starts Bun-only embedded relay. Disconnects the current controller first. |
 | `dglab_stop_relay` | none | Clears/disconnects the controller and stops the embedded relay. |
-| `dglab_connect` | `mode?`, remote or embedded fields, `qrOutput?` (`image`, `terminal`, `both`) | Connects remote V4 or starts/uses embedded V4. Defaults to image plus terminal fallback and returns the plain-text APP URL. |
+| `dglab_connect` | `mode?`, remote or embedded fields, `qrOutput?` (`image`, `terminal`, `both`) | Connects remote V4 or starts/uses embedded V4. Defaults to MCP image plus local-Markdown and terminal fallbacks, and returns the plain-text APP URL. |
 | `dglab_status` | none | Returns relay state, APPs, devices, compatible waveforms, selection, limits, and recent events. |
 | `dglab_disconnect` | `keepEmbeddedRelay?` | Clears touched channels and disconnects; stops embedded relay unless explicitly retained. |
 
@@ -198,7 +198,7 @@ Resolution order is: current MCP tool arguments, then environment variables, the
 | Variable | Default |
 | --- | --- |
 | `DGLAB_RELAY_MODE` | `remote` |
-| `DGLAB_RELAY` | `wss://ws.dungeon-lab.cn/` |
+| `DGLAB_RELAY` | `wss://trex.dungeon-lab.cn/v4` |
 | `DGLAB_EMBEDDED_BIND_HOST` | `127.0.0.1` |
 | `DGLAB_EMBEDDED_PORT` | random `49152..65535` |
 | `DGLAB_EMBEDDED_PREFIX` | `/` |

@@ -41,7 +41,7 @@ tool_timeout_sec = 30
 
 [mcp_servers.dglab.env]
 DGLAB_RELAY_MODE = "remote"
-DGLAB_RELAY = "wss://ws.dungeon-lab.cn/"
+DGLAB_RELAY = "wss://trex.dungeon-lab.cn/v4"
 ```
 
 再将 `skills/dglab-control` 复制或链接到 Codex skills 目录，即可通过 `$dglab-control` 使用。该 Skill 不依赖 `dglab-kit-sdk`。

@@ -25,7 +25,7 @@ This reference reflects the public TypeScript source of `dglab-kit` 1.0.0. Check
 import { DglabSocket } from 'dglab-kit';
 
 const socket = new DglabSocket({
-  url: 'wss://ws.dungeon-lab.cn/',
+  url: 'wss://trex.dungeon-lab.cn/v4',
   connectTimeout: 8_000,
   responseTimeout: 8_000,
 });

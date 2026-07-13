@@ -9,7 +9,7 @@ Create V4 by omitting `version` (the SDK default) or using `DGLAB_SOCKET_VERSION
 ```ts
 import { DGLAB_SOCKET_STATE, DglabSocket } from 'dglab-kit';
 
-const socket = new DglabSocket({ url: 'wss://ws.dungeon-lab.cn/' });
+const socket = new DglabSocket({ url: 'wss://trex.dungeon-lab.cn/v4' });
 const { targetId } = await socket.connect();
 
 if (!targetId || socket.state !== DGLAB_SOCKET_STATE.WaitingForPeer) {
@@ -93,7 +93,7 @@ import {
 } from 'dglab-kit';
 
 const socket = new DglabSocket({
-  url: 'wss://ws.dungeon-lab.cn/',
+  url: 'wss://trex.dungeon-lab.cn/v4',
   version: DGLAB_SOCKET_VERSION.V3,
 });
 ```
@@ -111,6 +111,6 @@ Use the controller `targetId`, never an APP `clientId`.
 
 Use `URL.searchParams.set('tid', targetId)` for V4 and remove trailing slashes before appending the V3 path segment. A QR is valid only for its current controller connection. Mark it stale and regenerate it after reconnect, target ID change, relay change, protocol change, `idle_timeout`, or socket close.
 
-Request `qrOutput: both` for image-capable chat clients. The image is the primary rendering and the terminal QR is the required fallback when a client does not surface MCP image content. A pairing response is incomplete until the user-visible message contains an actual QR rendering and the plain-text connection URL; never substitute wording such as “the QR above” for the rendering itself.
+Request `qrOutput: both` for image-capable chat clients. The MCP image is the primary rendering. For Codex Desktop, copy the returned `structuredContent.qrImage.markdown` line verbatim into the user-visible response; it references the same PNG through an absolute local path. The terminal QR remains the fallback when neither image route is surfaced. A pairing response is incomplete until the user-visible message contains an actual QR rendering and the plain-text connection URL; never substitute wording such as “the QR above” for the rendering itself.
 
 Preserve the relay URL pathname as the global WebSocket prefix. For example, a controller connected to `wss://relay.example/v4` must generate an APP URL at `wss://relay.example/v4?tid=<targetId>`.

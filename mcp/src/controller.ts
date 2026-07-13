@@ -5,9 +5,13 @@ import {
   OVC_WAVEFORMS,
   V4Channel,
 } from 'dglab-kit';
+import { createHash } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import QRCode from 'qrcode';
 
-export const DEFAULT_RELAY = 'wss://ws.dungeon-lab.cn/';
+export const DEFAULT_RELAY = 'wss://trex.dungeon-lab.cn/v4';
 export const DEFAULT_LIMITS = Object.freeze({
   delta: 5,
   intensity: 20,
@@ -77,6 +81,7 @@ type PairingQr = {
   appSocketUrl: string;
   qrPayload: string;
   qrPngBase64: string;
+  qrPngPath: string;
   qrTerminal: string;
 };
 
@@ -120,10 +125,17 @@ async function pairingQr(relayUrl: string, targetId: string): Promise<PairingQr>
     QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 2, width: 768 }),
     QRCode.toString(qrPayload, { type: 'terminal', errorCorrectionLevel: 'M', margin: 1, small: true }),
   ]);
+  const qrPngBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  const qrDirectory = join(tmpdir(), 'dglab-kit-mcp', String(process.pid));
+  const qrFileName = `pairing-${createHash('sha256').update(qrPayload).digest('hex').slice(0, 16)}.png`;
+  const qrPngPath = join(qrDirectory, qrFileName);
+  await mkdir(qrDirectory, { recursive: true, mode: 0o700 });
+  await writeFile(qrPngPath, Buffer.from(qrPngBase64, 'base64'), { mode: 0o600 });
   return {
     appSocketUrl,
     qrPayload,
-    qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    qrPngBase64,
+    qrPngPath,
     qrTerminal,
   };
 }

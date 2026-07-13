@@ -77,7 +77,7 @@ const embeddedRelay = new EmbeddedRelayManager({
 const server = new McpServer(
   { name: 'dglab-kit', version: '0.1.0' },
   {
-    instructions: 'Connect and pair first, inspect status, explicitly select a target, then send bounded commands. Warn but continue when a known slot reports no connected device or a muted channel. Stop requests take priority.',
+    instructions: 'Connect and pair first. When dglab_connect returns Pairing QR Markdown, copy that exact Markdown line into the user-visible response before the Connection URL. Inspect status, explicitly select a target, then send bounded commands. Warn but continue when a known slot reports no connected device or a muted channel. Stop requests take priority.',
   },
 );
 
@@ -157,7 +157,7 @@ server.registerTool(
   'dglab_connect',
   {
     title: 'Connect and pair DG-LAB',
-    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR followed by the plain-text connection URL. qrOutput defaults to both image and terminal rendering so clients that drop tool images still show a scannable QR. Network exposure must be explicitly allowed.',
+    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR followed by the plain-text connection URL. In Codex Desktop, copy the returned Pairing QR Markdown exactly into the user-visible response. qrOutput defaults to MCP image, local-Markdown, and terminal fallbacks. Network exposure must be explicitly allowed.',
     inputSchema: {
       mode: z.enum(['remote', 'embedded']).optional(),
       relay: z.string().url().optional(),
@@ -194,14 +194,28 @@ server.registerTool(
       const urls = embeddedRelay.connectionUrls();
       connectionResult = await controller.connect(urls.controllerUrl, urls.advertisedUrl);
     }
-    const { qrPngBase64, qrTerminal, ...connection } = connectionResult;
+    const {
+      qrPngBase64,
+      qrPngPath,
+      qrTerminal,
+      ...connection
+    } = connectionResult;
     const qrOutput = input.qrOutput ?? 'both';
+    const qrMarkdown = `![DG-LAB pairing QR](<${qrPngPath}>)`;
+    const qrMarkdownContent = {
+      type: 'text' as const,
+      text: `Pairing QR Markdown (copy this exact line into the user-visible response):\n${qrMarkdown}`,
+    };
     const qrContent = qrOutput === 'terminal'
       ? [{ type: 'text' as const, text: `Terminal QR:\n${qrTerminal}` }]
       : qrOutput === 'image'
-        ? [{ type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const }]
+        ? [
+            { type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const },
+            qrMarkdownContent,
+          ]
         : [
             { type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const },
+            qrMarkdownContent,
             { type: 'text' as const, text: `Terminal QR fallback:\n${qrTerminal}` },
           ];
     return {
@@ -209,7 +223,13 @@ server.registerTool(
         ...qrContent,
         { type: 'text', text: `Connection URL: ${connection.appSocketUrl}` },
       ],
-      structuredContent: { mode, qrOutput, connection, embeddedRelay: embeddedRelay.status() },
+      structuredContent: {
+        mode,
+        qrOutput,
+        connection,
+        qrImage: { path: qrPngPath, markdown: qrMarkdown },
+        embeddedRelay: embeddedRelay.status(),
+      },
     };
   }),
 );

@@ -9,7 +9,7 @@ Use the local `dglab-kit` stdio MCP tools. Do not write protocol frames or start
 
 ## Non-negotiable rules
 
-- Default to remote V4 at `wss://ws.dungeon-lab.cn/`; preserve an explicitly selected remote or embedded relay.
+- Default to remote V4 at `wss://trex.dungeon-lab.cn/v4`; preserve an explicitly selected remote or embedded relay.
 - Never bind an embedded relay beyond loopback without an explicit user request, `allowNetworkExposure: true`, and an APP-reachable `advertisedUrl`.
 - Treat the session as controllable only after `dglab_connect`, APP attachment, discovery of the requested device slot, and explicit `dglab_select_target`.
 - Use only the active session target: `clientId`, `slotId`, `deviceType`, and channel. Stop immediately on a direct stop or clear request.
@@ -19,7 +19,7 @@ Use the local `dglab-kit` stdio MCP tools. Do not write protocol frames or start
 ## Connect and pair
 
 1. Resolve relay mode. Use remote by default. For embedded mode, call `dglab_list_relay_addresses`, preserving the requested global path prefix, present viable addresses, and ask the user to select one when the APP is on another device. Preserve its randomly selected high port unless the user specifies a port.
-2. Choose `qrOutput: both` in a GUI or any interface that can display or attach response images; choose `qrOutput: terminal` only in a text-only CLI. Call `dglab_connect`, then place the returned image QR in the user-visible response with the terminal QR as fallback and the `Connection URL` as plain text directly below it. Do not merely say “scan the QR above”: verify the response actually contains a visible image or terminal QR. Never claim the QR was sent when only the URL or instructions are visible.
+2. Choose `qrOutput: both` in a GUI or any interface that can display or attach response images; choose `qrOutput: terminal` only in a text-only CLI. Call `dglab_connect`. In Codex Desktop, copy `structuredContent.qrImage.markdown` (also returned as `Pairing QR Markdown`) exactly into the user-visible response so the local PNG renders; retain the MCP image and terminal QR as fallbacks. Put the plain-text `Connection URL` directly below the visible QR. Do not merely say “scan the QR above”: verify the response actually contains a visible image or terminal QR. Never claim the QR was sent when only the URL or instructions are visible.
 3. After the APP scans the QR, call `dglab_status` until device slots are present.
 4. If more than one APP or device exists, ask the user to choose. Never select by array position.
 5. Call `dglab_select_target` with an exact `clientId`, `slotId`, and channel.
