@@ -8,7 +8,7 @@
 
 - `dglab-control/`：可安装的 skill。
   - `SKILL.md`：V4 校验、配对、会话与控制短流程。
-  - `scripts/generate-pairing-qr.mjs`：使用 `qrcode` 生成配对 PNG。
+  - `scripts/generate-pairing-qr.mjs`：使用 `qrcode` 生成配对 PNG，并可通过 `qrcode-terminal` 输出 CLI 二维码。
   - `references/intent-contract.md`：聊天触发和会话选择规则。
   - `references/safety.md`：限幅、时长、断开清理与设备状态校验。
   - `references/transport.md`：V4 单次指令的 HTTP/WS 路由与鉴权规则。
@@ -19,11 +19,11 @@
 将 `dglab-control` 安装或复制到 Codex skills 目录后，以 `$dglab-control` 调用。目标控制项目安装依赖：
 
 ```bash
-bun add dglab-kit qrcode
+bun add dglab-kit qrcode qrcode-terminal
 ```
 
 在没有 Bun 时，改用：
 
 ```bash
-npm install dglab-kit qrcode
+npm install dglab-kit qrcode qrcode-terminal
 ```

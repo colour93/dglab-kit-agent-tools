@@ -2,21 +2,26 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import QRCode from 'qrcode';
+import qrcodeTerminal from 'qrcode-terminal';
 
 const DEFAULT_RELAY = 'wss://ws.dungeon-lab.cn/';
 
 function usage(message) {
   if (message) console.error(`Error: ${message}\n`);
-  console.error('Usage: bun scripts/generate-pairing-qr.mjs --target-id <id> [--version v4|v3] [--server <ws-url>] [--output <png-path>]');
+  console.error('Usage: bun scripts/generate-pairing-qr.mjs --target-id <id> [--version v4|v3] [--server <ws-url>] [--output <png-path>] [--terminal]');
   process.exit(1);
 }
 
 function optionsFrom(argv) {
-  const options = { version: 'v4', server: DEFAULT_RELAY, output: 'dglab-pairing.png' };
+  const options = { version: 'v4', server: DEFAULT_RELAY, output: 'dglab-pairing.png', terminal: false };
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
     if (!option.startsWith('--')) usage(`Unexpected argument: ${option}`);
     const name = option.slice(2);
+    if (name === 'terminal') {
+      options.terminal = true;
+      continue;
+    }
     const value = argv[index + 1];
     if (!value || value.startsWith('--')) usage(`Missing value for --${name}`);
     if (!(name in options) && name !== 'target-id') usage(`Unknown option: --${name}`);
@@ -69,3 +74,8 @@ await QRCode.toFile(output, qrPayload, {
 console.log(`QR image: ${output}`);
 console.log(`APP socket URL: ${appSocketUrl}`);
 console.log(`QR payload: ${qrPayload}`);
+
+if (options.terminal) {
+  console.log('Terminal QR:');
+  qrcodeTerminal.generate(qrPayload, { small: true }, (code) => process.stdout.write(`${code}\n`));
+}

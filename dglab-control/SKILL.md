@@ -20,21 +20,21 @@ Use `dglab-kit`; never handcraft protocol frames. Prefer Bun and fall back to No
 Install dependencies in the controller project:
 
 ```bash
-bun add dglab-kit qrcode
+bun add dglab-kit qrcode qrcode-terminal
 ```
 
-Use `npm install dglab-kit qrcode` only when Bun is unavailable.
+Use `npm install dglab-kit qrcode qrcode-terminal` only when Bun is unavailable.
 
 1. Create a V4 `DglabSocket` and await `connect()`.
 2. Generate a QR PNG with `scripts/generate-pairing-qr.mjs` from its `targetId`.
-3. Render the generated absolute PNG path in the response. Never put `secret` in user-facing output.
+3. Render the generated absolute PNG path when the agent can show images; for CLI-only agents, add `--terminal` to render the same QR in the terminal. Never put `secret` in user-facing output.
 4. On `client-attached`, verify the APP with `requestDevices(clientId)` and select an eligible device before control.
 
 ```bash
 bun scripts/generate-pairing-qr.mjs --target-id "$TARGET_ID" --output ./dglab-pairing.png
 ```
 
-Pass `--server <ws-url>` for a custom relay and `--version v3` only for an explicit V3 session. Regenerate the QR after every controller reconnect, relay/protocol change, or `targetId` change; discard old images and URLs.
+Pass `--terminal` for a CLI QR, `--server <ws-url>` for a custom relay, and `--version v3` only for an explicit V3 session. Regenerate the QR after every controller reconnect, relay/protocol change, or `targetId` change; discard old images and URLs.
 
 ## Select a transport
 
