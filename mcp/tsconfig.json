@@ -12,7 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "types": ["node"]
+    "types": ["bun", "node"]
   },
   "include": ["src/**/*.ts"]
 }

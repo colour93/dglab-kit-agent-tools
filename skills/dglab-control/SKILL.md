@@ -9,7 +9,8 @@ Use the local `dglab-kit` stdio MCP tools. Do not write protocol frames or start
 
 ## Non-negotiable rules
 
-- Default to V4 at `wss://ws.dungeon-lab.cn/`; preserve a user-provided `ws://` or `wss://` relay.
+- Default to remote V4 at `wss://ws.dungeon-lab.cn/`; preserve an explicitly selected remote or embedded relay.
+- Never bind an embedded relay beyond loopback without an explicit user request, `allowNetworkExposure: true`, and an APP-reachable `advertisedUrl`.
 - Treat the session as controllable only after `dglab_connect`, APP attachment, successful device discovery, and explicit `dglab_select_target`.
 - Use only the active session target: `clientId`, `slotId`, `deviceType`, and channel. Stop immediately on a direct stop or clear request.
 - Apply [references/safety.md](references/safety.md) before every device command. The MCP also enforces the same ceilings and serializes commands per selected channel.
@@ -17,10 +18,11 @@ Use the local `dglab-kit` stdio MCP tools. Do not write protocol frames or start
 
 ## Connect and pair
 
-1. Call `dglab_connect` and show its QR image to the user. Never expose a relay secret.
-2. After the APP scans the QR, call `dglab_status` until eligible devices are present.
-3. If more than one APP or device exists, ask the user to choose. Never select by array position.
-4. Call `dglab_select_target` with an exact `clientId`, `slotId`, and channel.
+1. Resolve relay mode. Use remote by default. For embedded mode, call `dglab_list_relay_addresses`, present viable addresses, and ask the user to select one when the APP is on another device.
+2. Call `dglab_connect` with the selected mode and show its QR image. Never expose a relay secret.
+3. After the APP scans the QR, call `dglab_status` until eligible devices are present.
+4. If more than one APP or device exists, ask the user to choose. Never select by array position.
+5. Call `dglab_select_target` with an exact `clientId`, `slotId`, and channel.
 
 ## Handle natural-language commands
 
@@ -43,6 +45,7 @@ The MCP persists a confirmed target only for its current process. Reuse it for l
 - Use `dglab_set_temporary` only with explicit intensity and duration.
 - Use `dglab_play_waveform` only with a compatible waveform returned by `dglab_status`.
 - Use `dglab_stop` as the priority path; it cancels queued work for the channel before clearing it.
-- Use `dglab_disconnect` for normal shutdown; it clears touched channels before closing the socket.
+- Use `dglab_start_relay` and `dglab_stop_relay` only for an explicitly requested embedded relay lifecycle.
+- Use `dglab_disconnect` for normal shutdown; it clears touched channels and stops an embedded relay unless the user explicitly keeps it running.
 
 After a disconnect, do not claim that a command was delivered. Require `dglab_connect`, pairing, discovery, and selection again.

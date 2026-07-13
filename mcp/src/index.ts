@@ -9,6 +9,19 @@ import {
   DglabController,
   type TargetInput,
 } from './controller.ts';
+import {
+  EmbeddedRelayManager,
+  type EmbeddedRelayConfig,
+} from './relay/manager.ts';
+
+type RelayMode = 'remote' | 'embedded';
+
+type ConnectInput = EmbeddedRelayConfig & {
+  mode?: RelayMode;
+  relay?: string;
+};
+
+type ControllerConnection = Awaited<ReturnType<DglabController['connect']>>;
 
 function envInteger(name: string, fallback: number, min: number, max: number): number {
   if (process.env[name] === undefined) return fallback;
@@ -19,6 +32,22 @@ function envInteger(name: string, fallback: number, min: number, max: number): n
   return value;
 }
 
+function envBoolean(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${name} must be true or false`);
+}
+
+function relayMode(value: string | undefined): RelayMode {
+  if (value === undefined || value === 'remote') return 'remote';
+  if (value === 'embedded') return 'embedded';
+  throw new Error('DGLAB_RELAY_MODE must be remote or embedded');
+}
+
+const defaultRelayMode = relayMode(process.env.DGLAB_RELAY_MODE);
+
 const controller = new DglabController({
   relay: process.env.DGLAB_RELAY ?? DEFAULT_RELAY,
   limits: {
@@ -26,6 +55,14 @@ const controller = new DglabController({
     intensity: envInteger('DGLAB_MAX_INTENSITY', DEFAULT_LIMITS.intensity, 0, DEFAULT_LIMITS.intensity),
     durationMs: envInteger('DGLAB_MAX_DURATION_MS', DEFAULT_LIMITS.durationMs, 0, DEFAULT_LIMITS.durationMs),
   },
+});
+
+const embeddedRelay = new EmbeddedRelayManager({
+  bindHost: process.env.DGLAB_EMBEDDED_BIND_HOST ?? '127.0.0.1',
+  port: envInteger('DGLAB_EMBEDDED_PORT', 9998, 1, 65_535),
+  controllerUrl: process.env.DGLAB_EMBEDDED_CONTROLLER_URL,
+  advertisedUrl: process.env.DGLAB_EMBEDDED_ADVERTISED_URL,
+  allowNetworkExposure: envBoolean('DGLAB_EMBEDDED_ALLOW_NETWORK_EXPOSURE'),
 });
 
 const server = new McpServer(
@@ -56,21 +93,96 @@ function safe<TInput extends object>(handler: (input: TInput) => Promise<CallToo
 }
 
 server.registerTool(
+  'dglab_list_relay_addresses',
+  {
+    title: 'List embedded relay addresses',
+    description: 'List loopback and private IPv4 address candidates for an embedded relay. A phone normally needs a LAN address, not 127.0.0.1.',
+    inputSchema: { port: z.number().int().min(1).max(65_535).optional() },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  },
+  safe(async ({ port }: { port?: number }) => textResult(embeddedRelay.listAddresses(port))),
+);
+
+server.registerTool(
+  'dglab_start_relay',
+  {
+    title: 'Start embedded V4 relay',
+    description: 'Start the Bun-only embedded V4 relay. Non-loopback binding requires allowNetworkExposure=true and an explicit advertisedUrl reachable by the APP.',
+    inputSchema: {
+      bindHost: z.string().min(1).optional(),
+      port: z.number().int().min(1).max(65_535).optional(),
+      controllerUrl: z.string().url().optional(),
+      advertisedUrl: z.string().url().optional(),
+      allowNetworkExposure: z.boolean().optional(),
+    },
+    annotations: { destructiveHint: true, idempotentHint: false },
+  },
+  safe(async (input: EmbeddedRelayConfig) => {
+    await controller.disconnect('embedded_relay_start');
+    return textResult(await embeddedRelay.start(input));
+  }),
+);
+
+server.registerTool(
+  'dglab_stop_relay',
+  {
+    title: 'Stop embedded V4 relay',
+    description: 'Clear and disconnect the controller, then stop the embedded relay and close its listeners.',
+    inputSchema: {},
+    annotations: { destructiveHint: false, idempotentHint: true },
+  },
+  safe(async () => {
+    const connection = await controller.disconnect('embedded_relay_stop');
+    const relay = await embeddedRelay.stop();
+    return textResult({ connection, relay });
+  }),
+);
+
+server.registerTool(
   'dglab_connect',
   {
     title: 'Connect and pair DG-LAB',
-    description: 'Connect the local controller to a V4 relay and return a fresh APP pairing QR code. Reuses the current live connection when possible.',
-    inputSchema: { relay: z.string().url().optional() },
+    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR. Network exposure must be explicitly allowed.',
+    inputSchema: {
+      mode: z.enum(['remote', 'embedded']).optional(),
+      relay: z.string().url().optional(),
+      bindHost: z.string().min(1).optional(),
+      port: z.number().int().min(1).max(65_535).optional(),
+      controllerUrl: z.string().url().optional(),
+      advertisedUrl: z.string().url().optional(),
+      allowNetworkExposure: z.boolean().optional(),
+    },
     annotations: { destructiveHint: false, idempotentHint: false },
   },
-  safe(async ({ relay }: { relay?: string }) => {
-    const { qrPngBase64, ...connection } = await controller.connect(relay);
+  safe(async (input: ConnectInput) => {
+    const mode = input.mode ?? defaultRelayMode;
+    let connectionResult: ControllerConnection;
+    if (mode === 'remote') {
+      if (embeddedRelay.status().running) {
+        await controller.disconnect('switch_to_remote_relay');
+        await embeddedRelay.stop();
+      }
+      connectionResult = await controller.connect(input.relay ?? process.env.DGLAB_RELAY ?? DEFAULT_RELAY);
+    } else {
+      const hasOverride = input.bindHost !== undefined
+        || input.port !== undefined
+        || input.controllerUrl !== undefined
+        || input.advertisedUrl !== undefined
+        || input.allowNetworkExposure !== undefined;
+      if (!embeddedRelay.status().running || hasOverride) {
+        await controller.disconnect('embedded_relay_prepare');
+        await embeddedRelay.start(input);
+      }
+      const urls = embeddedRelay.connectionUrls();
+      connectionResult = await controller.connect(urls.controllerUrl, urls.advertisedUrl);
+    }
+    const { qrPngBase64, ...connection } = connectionResult;
     return {
       content: [
-        { type: 'text', text: JSON.stringify(connection, null, 2) },
+        { type: 'text', text: JSON.stringify({ mode, connection, embeddedRelay: embeddedRelay.status() }, null, 2) },
         { type: 'image', data: qrPngBase64, mimeType: 'image/png' },
       ],
-      structuredContent: connection as Record<string, unknown>,
+      structuredContent: { mode, connection, embeddedRelay: embeddedRelay.status() },
     };
   }),
 );
@@ -83,7 +195,11 @@ server.registerTool(
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   },
-  safe(async () => textResult(controller.status())),
+  safe(async () => textResult({
+    defaultRelayMode,
+    controller: controller.status(),
+    embeddedRelay: embeddedRelay.status(),
+  })),
 );
 
 server.registerTool(
@@ -174,11 +290,15 @@ server.registerTool(
   'dglab_disconnect',
   {
     title: 'Disconnect DG-LAB controller',
-    description: 'Clear all channels touched by this MCP process, invalidate the selection, and close the relay connection.',
-    inputSchema: {},
+    description: 'Clear touched channels and disconnect. The embedded relay is stopped by default; set keepEmbeddedRelay=true to leave it listening.',
+    inputSchema: { keepEmbeddedRelay: z.boolean().optional() },
     annotations: { destructiveHint: false, idempotentHint: true },
   },
-  safe(async () => textResult(await controller.disconnect())),
+  safe(async ({ keepEmbeddedRelay }: { keepEmbeddedRelay?: boolean }) => {
+    const connection = await controller.disconnect();
+    const relay = keepEmbeddedRelay ? embeddedRelay.status() : await embeddedRelay.stop();
+    return textResult({ connection, relay });
+  }),
 );
 
 let shuttingDown = false;
@@ -186,6 +306,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   await controller.disconnect('mcp_shutdown');
+  await embeddedRelay.stop();
   await server.close();
 }
 

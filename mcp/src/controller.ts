@@ -172,6 +172,7 @@ export class DglabController {
   readonly defaultRelay: string;
   readonly limits: SafetyLimits;
   relay: string;
+  advertisedRelay: string;
   socket: DglabSocket | null = null;
   targetId: string | null = null;
   qr: PairingQr | null = null;
@@ -184,6 +185,7 @@ export class DglabController {
   constructor({ relay = DEFAULT_RELAY, limits = DEFAULT_LIMITS }: { relay?: string; limits?: SafetyLimits } = {}) {
     this.defaultRelay = validateRelay(relay);
     this.relay = this.defaultRelay;
+    this.advertisedRelay = this.defaultRelay;
     this.limits = { ...DEFAULT_LIMITS, ...limits };
   }
 
@@ -234,14 +236,22 @@ export class DglabController {
     });
   }
 
-  async connect(relayInput?: string) {
+  async connect(relayInput?: string, advertisedRelayInput?: string) {
     const relay = validateRelay(relayInput ?? this.relay ?? this.defaultRelay);
+    const advertisedRelay = validateRelay(advertisedRelayInput ?? relay);
     if (this.targetId && this.qr && this.socket && relay === this.relay) {
-      return { reused: true, relay, targetId: this.targetId, ...this.qr };
+      if (advertisedRelay !== this.advertisedRelay) {
+        const { appSocketUrl, qrPayload } = pairingPayload(advertisedRelay, this.targetId);
+        const dataUrl = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 2, width: 768 });
+        this.advertisedRelay = advertisedRelay;
+        this.qr = { appSocketUrl, qrPayload, qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+      }
+      return { reused: true, relay, advertisedRelay, targetId: this.targetId, ...this.qr };
     }
     if (this.socket) await this.disconnect('reconnect');
 
     this.relay = relay;
+    this.advertisedRelay = advertisedRelay;
     const socket = new DglabSocket({ url: relay });
     this.socket = socket;
     this.bindSocket(socket);
@@ -254,7 +264,7 @@ export class DglabController {
       if (this.socket !== socket) throw new Error('connection was replaced before pairing completed');
 
       this.targetId = targetId;
-      const { appSocketUrl, qrPayload } = pairingPayload(relay, targetId);
+      const { appSocketUrl, qrPayload } = pairingPayload(advertisedRelay, targetId);
       const dataUrl = await QRCode.toDataURL(qrPayload, {
         errorCorrectionLevel: 'M',
         margin: 2,
@@ -266,7 +276,7 @@ export class DglabController {
         qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1),
       };
       this.record(`relay connected; targetId=${targetId}`);
-      return { reused: false, relay, targetId, ...this.qr };
+      return { reused: false, relay, advertisedRelay, targetId, ...this.qr };
     } catch (error) {
       if (this.socket === socket) {
         socket.destroy(1011, 'connect_failed');
@@ -291,6 +301,7 @@ export class DglabController {
       protocol: 'v4',
       transport: 'stdio MCP + WebSocket relay',
       relay: this.relay,
+      advertisedRelay: this.advertisedRelay,
       socketState: this.socket?.state ?? DGLAB_SOCKET_STATE.Idle,
       targetId: this.targetId,
       clients: this.clients(),
