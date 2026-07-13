@@ -55,6 +55,12 @@ args = ["--prefix", "/absolute/path/to/dglab-kit-skill/mcp", "run", "start:node"
 
 内置 Relay 使用 `Bun.serve()`，因此不支持 Node.js 模式。
 
+完整使用示例：
+
+```text
+创建一个 dglab socket 控制客户端，使用内置服务器 v4 协议，当我再次发送 测试 消息时，临时输出 5s 挤压波形到 A 通道，强度 5。
+```
+
 ## 使用 SDK 开发
 
 只需将 `skills/dglab-kit-sdk` 复制或链接到 Codex skills 目录，通过 `$dglab-kit-sdk` 让 Agent 在目标项目中安装并使用 `dglab-kit`：
