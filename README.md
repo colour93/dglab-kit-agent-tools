@@ -1,4 +1,4 @@
-# DG-LAB Kit Agent Skills
+# DG-LAB Kit Agent Tools
 
 本仓库提供两套彼此独立的 Codex Skill：一套通过 MCP 直接控制设备，另一套用于在项目中使用 `dglab-kit` SDK 开发集成。
 
