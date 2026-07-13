@@ -1,8 +1,5 @@
-# DG-LAB Kit MCP & Skill
-
-基于 `dglab-kit` 的本地 DG-LAB 控制方案：MCP 持有设备连接和会话状态，Skill 负责自然语言意图、安全策略与调用流程。
-
-默认使用 V4 与官方中继 `wss://ws.dungeon-lab.cn/`。MCP 通过 stdio 运行，不监听本地或公网端口。
+# DG-LAB Kit Agent Tools
+基于 `dglab-kit` 的本地 DG-LAB 设备控制 MCP & Skill。
 
 ## 目录
 
