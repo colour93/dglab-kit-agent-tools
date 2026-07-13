@@ -21,15 +21,18 @@ if (!targetId || socket.state !== DGLAB_SOCKET_STATE.WaitingForPeer) {
 
 Listen for `error`, `close`, `client-disconnected`, `devices`, and `device`. A V4 controller can have multiple APPs; `clientId` identifies an APP and `slotId` identifies a device in it. V4 commands use the controller WebSocket; the relay has no HTTP command API.
 
-## Device eligibility and waveform choice
+## Device slot validation and waveform choice
 
 Use `socket.getClient(clientId)?.devices` after the APP snapshot/event stream is available. Select by explicit user choice or a requested type; never by array position.
 
-Reject or ask for confirmation when the latest device data explicitly reports any of the following:
+Warn and continue without asking for confirmation when an existing slot explicitly reports any of the following:
 
 - `slotState.hasDevice === false`;
 - `props.connectState === 'disconnected'`;
-- the selected channel is muted, overheated, damaged, or blocked.
+- the selected channel is muted;
+- an OVC channel reports no attached accessory.
+
+Reject when the requested APP or device slot does not exist, or when the selected channel reports overheat, output damage, or a blocked state.
 
 Use waveform collections only for compatible types:
 
@@ -39,7 +42,7 @@ Use waveform collections only for compatible types:
 | `OVC_1` | `OVC_WAVEFORMS` |
 | `BMTR_1` | No waveform or intensity command through this skill |
 
-If no eligible compatible device exists, report the discovered APP/device status and ask the user to pair, connect, or select another device.
+If no compatible device slot exists, report the discovered APP/device status and ask the user to pair, connect, or select another slot.
 
 ## V4 commands
 
@@ -97,5 +100,7 @@ Use the controller `targetId`, never an APP `clientId`.
 | V3 | `<relay>/<targetId>` | `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#<APP socket address>` |
 
 Use `URL.searchParams.set('tid', targetId)` for V4 and remove trailing slashes before appending the V3 path segment. A QR is valid only for its current controller connection. Mark it stale and regenerate it after reconnect, target ID change, relay change, protocol change, `idle_timeout`, or socket close.
+
+Request `qrOutput: both` for image-capable chat clients. The image is the primary rendering and the terminal QR is the required fallback when a client does not surface MCP image content. A pairing response is incomplete until the user-visible message contains an actual QR rendering and the plain-text connection URL; never substitute wording such as “the QR above” for the rendering itself.
 
 Preserve the relay URL pathname as the global WebSocket prefix. For example, a controller connected to `wss://relay.example/v4` must generate an APP URL at `wss://relay.example/v4?tid=<targetId>`.

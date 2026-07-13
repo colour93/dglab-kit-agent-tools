@@ -59,6 +59,7 @@ type Target = {
   slotId: string;
   channel: ChannelName;
   device: DeviceState;
+  warnings: string[];
 };
 
 type Selection = {
@@ -141,20 +142,21 @@ function channelHardwareStatus(device: DeviceState, channel: ChannelName): numbe
   return device.props?.[key];
 }
 
-function assertDeviceEligible(device: DeviceState, channel: ChannelName): void {
-  if (device.slotState?.hasDevice === false) throw new Error('selected slot reports no device');
-  if (device.props?.connectState === 'disconnected') throw new Error('selected device is disconnected');
-
+function validateDeviceState(device: DeviceState, channel: ChannelName): string[] {
+  const warnings: string[] = [];
+  if (device.slotState?.hasDevice === false) warnings.push('selected slot reports no connected device');
+  if (device.props?.connectState === 'disconnected') warnings.push('selected device reports disconnected');
   const state = channelState(device, channel);
-  if (state.isMuted === true) throw new Error('selected channel is muted');
+  if (state.isMuted === true) warnings.push('selected channel is muted; output may not reach the user');
   if (state.comfortLimit?.overheat === true) throw new Error('selected channel is overheated');
 
   const status = channelHardwareStatus(device, channel);
   if (status === 3) throw new Error('selected channel reports output damage');
   if (status === 4) throw new Error('selected channel is blocked');
   if (device.type === 'OVC_1' && status === false) {
-    throw new Error('selected OVC channel reports no attached accessory');
+    warnings.push('selected OVC channel reports no attached accessory');
   }
+  return warnings;
 }
 
 function effectiveIntensityMax(device: DeviceState, channel: ChannelName, configuredMax: number): number {
@@ -338,8 +340,8 @@ export class DglabController {
     const sdkDevice = client.getDevice(source.slotId);
     if (!sdkDevice) throw new Error('target device is not available');
     const device = sdkDevice as unknown as DeviceState;
-    if (!allowUnavailable) assertDeviceEligible(device, channel);
-    return { clientId: source.clientId, slotId: source.slotId, channel, device };
+    const warnings = allowUnavailable ? [] : validateDeviceState(device, channel);
+    return { clientId: source.clientId, slotId: source.slotId, channel, device, warnings };
   }
 
   requireSocket(): DglabSocket {
@@ -361,7 +363,7 @@ export class DglabController {
     };
     const summary = this.summary(target, 'selected');
     this.record(summary);
-    return { summary, selection: this.selection };
+    return { summary, selection: this.selection, warnings: target.warnings };
   }
 
   targetKey(target: Target): string {
@@ -414,7 +416,7 @@ export class DglabController {
       ? socket.addIntensity(target.clientId, target.slotId, channel, delta, { immediate: true })
       : socket.reduceStrength(target.clientId, target.slotId, channel, delta, { immediate: true }));
     this.record(`finished: ${summary}`);
-    return { summary, result };
+    return { summary, warnings: target.warnings, result };
   }
 
   async temporary(intensityInput: number, durationInput: number) {
@@ -435,7 +437,7 @@ export class DglabController {
       { immediate: true },
     ));
     this.record(`finished: ${summary}`);
-    return { summary, result };
+    return { summary, warnings: target.warnings, result };
   }
 
   async waveform(nameInput: string, durationInput: number) {
@@ -459,7 +461,7 @@ export class DglabController {
       { immediate: true },
     ));
     this.record(`finished: ${summary}`);
-    return { summary, result };
+    return { summary, warnings: target.warnings, result };
   }
 
   async stop(input: TargetInput = {}) {

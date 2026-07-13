@@ -19,7 +19,7 @@ type RelayMode = 'remote' | 'embedded';
 type ConnectInput = EmbeddedRelayConfig & {
   mode?: RelayMode;
   relay?: string;
-  qrOutput?: 'image' | 'terminal';
+  qrOutput?: 'image' | 'terminal' | 'both';
 };
 
 type ControllerConnection = Awaited<ReturnType<DglabController['connect']>>;
@@ -75,7 +75,7 @@ const embeddedRelay = new EmbeddedRelayManager({
 const server = new McpServer(
   { name: 'dglab-kit', version: '0.1.0' },
   {
-    instructions: 'Connect and pair first, inspect status, explicitly select a target, then send bounded commands. Stop requests take priority.',
+    instructions: 'Connect and pair first, inspect status, explicitly select a target, then send bounded commands. Warn but continue when a known slot reports no connected device or a muted channel. Stop requests take priority.',
   },
 );
 
@@ -155,7 +155,7 @@ server.registerTool(
   'dglab_connect',
   {
     title: 'Connect and pair DG-LAB',
-    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR as an image or terminal rendering followed by the plain-text connection URL. Network exposure must be explicitly allowed.',
+    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR followed by the plain-text connection URL. qrOutput defaults to both image and terminal rendering so clients that drop tool images still show a scannable QR. Network exposure must be explicitly allowed.',
     inputSchema: {
       mode: z.enum(['remote', 'embedded']).optional(),
       relay: z.string().url().optional(),
@@ -165,7 +165,7 @@ server.registerTool(
       controllerUrl: z.string().url().optional(),
       advertisedUrl: z.string().url().optional(),
       allowNetworkExposure: z.boolean().optional(),
-      qrOutput: z.enum(['image', 'terminal']).optional(),
+      qrOutput: z.enum(['image', 'terminal', 'both']).optional(),
     },
     annotations: { destructiveHint: false, idempotentHint: false },
   },
@@ -193,15 +193,21 @@ server.registerTool(
       connectionResult = await controller.connect(urls.controllerUrl, urls.advertisedUrl);
     }
     const { qrPngBase64, qrTerminal, ...connection } = connectionResult;
-    const qrContent = input.qrOutput === 'terminal'
-      ? { type: 'text' as const, text: qrTerminal }
-      : { type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const };
+    const qrOutput = input.qrOutput ?? 'both';
+    const qrContent = qrOutput === 'terminal'
+      ? [{ type: 'text' as const, text: `Terminal QR:\n${qrTerminal}` }]
+      : qrOutput === 'image'
+        ? [{ type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const }]
+        : [
+            { type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const },
+            { type: 'text' as const, text: `Terminal QR fallback:\n${qrTerminal}` },
+          ];
     return {
       content: [
-        qrContent,
+        ...qrContent,
         { type: 'text', text: `Connection URL: ${connection.appSocketUrl}` },
       ],
-      structuredContent: { mode, connection, embeddedRelay: embeddedRelay.status() },
+      structuredContent: { mode, qrOutput, connection, embeddedRelay: embeddedRelay.status() },
     };
   }),
 );
@@ -225,7 +231,7 @@ server.registerTool(
   'dglab_select_target',
   {
     title: 'Select DG-LAB target',
-    description: 'Select an exact attached APP, device slot, and channel for later control calls. Never infer a device from list order.',
+    description: 'Select an exact attached APP, existing device slot, and channel for later control calls. Disconnected-device and muted-channel states return warnings but do not block selection. Never infer a device from list order.',
     inputSchema: {
       clientId: z.string().min(1),
       slotId: z.string().min(1),
@@ -240,9 +246,9 @@ server.registerTool(
   'dglab_increase',
   {
     title: 'Increase DG-LAB intensity',
-    description: 'Increase the selected channel by an explicit bounded delta. Commands for the same channel are serialized.',
+    description: 'Increase the selected channel by an explicit bounded delta. Disconnected-device or muted-channel warnings do not block output. Commands for the same channel are serialized.',
     inputSchema: { delta: z.number().int().min(1).max(controller.limits.delta) },
-    annotations: { destructiveHint: true, idempotentHint: false },
+    annotations: { destructiveHint: false, idempotentHint: false },
   },
   safe(async ({ delta }: { delta: number }) => textResult(await controller.increase(delta))),
 );
@@ -251,9 +257,9 @@ server.registerTool(
   'dglab_decrease',
   {
     title: 'Decrease DG-LAB intensity',
-    description: 'Decrease the selected channel by an explicit bounded delta. Commands for the same channel are serialized.',
+    description: 'Decrease the selected channel by an explicit bounded delta. Disconnected-device or muted-channel warnings do not block output. Commands for the same channel are serialized.',
     inputSchema: { delta: z.number().int().min(1).max(controller.limits.delta) },
-    annotations: { destructiveHint: true, idempotentHint: false },
+    annotations: { destructiveHint: false, idempotentHint: false },
   },
   safe(async ({ delta }: { delta: number }) => textResult(await controller.decrease(delta))),
 );
@@ -262,12 +268,12 @@ server.registerTool(
   'dglab_set_temporary',
   {
     title: 'Set temporary DG-LAB intensity',
-    description: 'Set a bounded temporary intensity on the selected channel. It returns to zero when the task ends.',
+    description: 'Set a bounded temporary intensity on the selected channel. Disconnected-device or muted-channel warnings do not block output. It returns to zero when the task ends.',
     inputSchema: {
       intensity: z.number().int().min(0).max(controller.limits.intensity),
       durationMs: z.number().int().min(0).max(controller.limits.durationMs),
     },
-    annotations: { destructiveHint: true, idempotentHint: false },
+    annotations: { destructiveHint: false, idempotentHint: false },
   },
   safe(async ({ intensity, durationMs }: { intensity: number; durationMs: number }) => (
     textResult(await controller.temporary(intensity, durationMs))
@@ -278,12 +284,12 @@ server.registerTool(
   'dglab_play_waveform',
   {
     title: 'Play DG-LAB waveform',
-    description: 'Play a named compatible waveform on the selected channel for a bounded duration. Read dglab_status for compatible names.',
+    description: 'Play a named compatible waveform on the selected channel for a bounded duration. Disconnected-device or muted-channel warnings do not block output. Read dglab_status for compatible names.',
     inputSchema: {
       name: z.string().min(1),
       durationMs: z.number().int().min(0).max(controller.limits.durationMs),
     },
-    annotations: { destructiveHint: true, idempotentHint: false },
+    annotations: { destructiveHint: false, idempotentHint: false },
   },
   safe(async ({ name, durationMs }: { name: string; durationMs: number }) => (
     textResult(await controller.waveform(name, durationMs))

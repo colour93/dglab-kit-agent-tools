@@ -22,7 +22,7 @@ type Command = {
 };
 ```
 
-Resolve an explicit APP, device, or channel from the message first. Otherwise use the active session selection. If neither is available or it is stale, ask the user to select from the eligible devices; never infer from ordering.
+Resolve an explicit APP, device slot, or channel from the message first. Otherwise use the active session selection. If neither is available or it is stale, ask the user to select from the discovered slots; never infer from ordering.
 
 ## Intent mapping
 
@@ -33,12 +33,12 @@ Resolve an explicit APP, device, or channel from the message first. Otherwise us
 | “强度 N，持续 T” | `temporary` | `intensity`, `durationMs` | `dglab_set_temporary` |
 | “播放 <波形> T 秒” | `waveform` | compatible waveform, `durationMs` | `dglab_play_waveform` |
 | “选 X 的 A 通道” | `select` | unambiguous target | `dglab_select_target` |
-| “测试”等项目自定义术语 | — | explicit standard command and parameters | ask; do not send hardware commands |
+| “测试”等项目自定义术语 | the explicit command template defined earlier in the active interaction | values from that template | mapped bounded MCP tool(s) |
 
-Do not reserve a generic `test` command. `dglab-kit` has no such API, and individual controller projects may give the word different meanings. A project may document its own explicit command template outside this skill; otherwise ask the user for the target operation and parameters.
+Do not reserve a global generic `test` command. If the user explicitly defines “测试” or another alias as a fully specified bounded command in the active interaction, retain that mapping for the interaction and execute it when invoked without asking the user to repeat its parameters. Otherwise ask for the target operation and parameters.
 
 ## Selection lifecycle
 
-Store a confirmed selection as `{ clientId, slotId, deviceType, channel }` for the current MCP process. Before each non-stop command, echo the selected target and command summary and revalidate it against the latest device state.
+Store a selected target as `{ clientId, slotId, deviceType, channel }` for the current MCP process. Before each non-stop command, echo the selected target, command summary, and warning-only device states, then execute immediately. Do not turn this notice into another confirmation step.
 
 Clear the selection on `client-disconnected`, device removal, socket `close`, controller reconnect, `idle_timeout`, relay change, protocol change, or a changed `targetId`. Ask for fresh selection rather than carrying it across those boundaries.

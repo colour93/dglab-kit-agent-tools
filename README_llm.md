@@ -64,13 +64,13 @@ Install or link `skills/dglab-control` into the Codex skills directory. Invoke i
 ## Required agent workflow
 
 1. Resolve relay mode. Default to `remote` and `wss://ws.dungeon-lab.cn/` unless the user chose another relay.
-2. Call `dglab_connect`. Use `qrOutput: "image"` for image-capable clients and `"terminal"` for CLI clients.
-3. Show the QR and always show the returned plain-text `Connection URL` directly below it.
-4. After the APP scans the QR, call `dglab_status` until devices are discovered.
-5. If multiple APPs or devices are eligible, ask the user to choose. Never select by array order.
+2. Call `dglab_connect`. Use `qrOutput: "both"` for image-capable clients and `"terminal"` only for text-only CLI clients. Omitting the option also defaults to `"both"`.
+3. Put an actual image or terminal QR in the user-visible response and always show the returned plain-text `Connection URL` directly below it. Never claim a QR is “above” unless it is visibly present.
+4. After the APP scans the QR, call `dglab_status` until device slots are discovered.
+5. If multiple APPs or device slots exist, ask the user to choose. Never select by array order.
 6. Call `dglab_select_target` with exact `clientId`, `slotId`, and channel.
-7. Before every non-stop device command, validate current state and state the selected APP/device/channel plus the bounded command.
-8. Map only explicit, supported intents to tools. Do not treat ambiguous words such as “test” as hardware commands.
+7. Before every non-stop device command, validate current state and state the selected APP/device/channel, bounded command, and any warning-only states. This is a notice, not a confirmation request.
+8. Map explicit supported intents and aliases that the user fully defined in the active interaction to tools. An undefined ambiguous word such as “test” still requires clarification.
 9. Execute stop/clear requests immediately through `dglab_stop`; stop takes priority over queued work.
 10. Use `dglab_disconnect` for normal shutdown.
 
@@ -85,7 +85,7 @@ A new task has no selected device. Selection is process-local and must not be as
 | `dglab_list_relay_addresses` | `port?`, `prefix?` | Lists loopback/private IPv4 candidates. If no port is configured, reserves one random port in `49152..65535` for the next embedded start; does not listen. |
 | `dglab_start_relay` | embedded relay fields | Starts Bun-only embedded relay. Disconnects the current controller first. |
 | `dglab_stop_relay` | none | Clears/disconnects the controller and stops the embedded relay. |
-| `dglab_connect` | `mode?`, remote or embedded fields, `qrOutput?` | Connects remote V4 or starts/uses embedded V4. Returns QR plus plain-text APP URL. |
+| `dglab_connect` | `mode?`, remote or embedded fields, `qrOutput?` (`image`, `terminal`, `both`) | Connects remote V4 or starts/uses embedded V4. Defaults to image plus terminal fallback and returns the plain-text APP URL. |
 | `dglab_status` | none | Returns relay state, APPs, devices, compatible waveforms, selection, limits, and recent events. |
 | `dglab_disconnect` | `keepEmbeddedRelay?` | Clears touched channels and disconnects; stops embedded relay unless explicitly retained. |
 
@@ -106,7 +106,7 @@ Remote mode uses `relay`, a `ws://` or `wss://` V4 Relay URL.
 
 | Tool | Required input | Preconditions |
 | --- | --- | --- |
-| `dglab_select_target` | `clientId`, `slotId`, `channel` (`A` or `B`) | Exact APP/device/channel exists and is eligible. |
+| `dglab_select_target` | `clientId`, `slotId`, `channel` (`A` or `B`) | Exact APP/device slot/channel exists. Disconnected-device and muted-channel states return warnings. |
 | `dglab_increase` | `delta` | Active target; integer `1..configured max delta`. |
 | `dglab_decrease` | `delta` | Active target; integer `1..configured max delta`. |
 | `dglab_set_temporary` | `intensity`, `durationMs` | Active target; both integers within configured/device bounds. Returns to zero at task end. |
@@ -114,6 +114,8 @@ Remote mode uses `relay`, a `ws://` or `wss://` V4 Relay URL.
 | `dglab_stop` | optional complete target | Use active selection, or provide all of `clientId`, `slotId`, and `channel`. Cancels queued work before clearing. |
 
 Do not partially specify a target to `dglab_stop`. Do not issue intensity or waveform commands to `BMTR_1`. Compatible waveform families are reported by `dglab_status` and derive from device type.
+
+Bounded device-output tools intentionally publish `destructiveHint: false` so clients do not turn every already-requested command into another approval step. Runtime ceilings, target validation, serialization, and hard device-fault checks remain enforced. Starting a network-exposed relay remains a higher-risk operation.
 
 ## Natural-language intent mapping
 
@@ -126,7 +128,7 @@ Do not partially specify a target to `dglab_stop`. Do not issue intensity or wav
 | play waveform X for T | compatible name and duration | `dglab_play_waveform` |
 | select device/channel | unambiguous APP, slot, channel | `dglab_select_target` |
 
-If required data is missing, ask for it. Reject out-of-policy values rather than silently clamping. Custom or ambiguous wording must be restated as one of the supported commands with explicit parameters.
+If required data is missing, ask for it. Reject out-of-policy values rather than silently clamping. A custom alias may reuse a fully specified bounded command template the user defined earlier in the active interaction; otherwise ask for explicit parameters.
 
 ## Safety invariants
 
@@ -142,8 +144,9 @@ Environment variables may only make these defaults stricter; runtime validation 
 
 Before a device command:
 
-- Confirm the controller is connected, APP and slot are live, and the target channel is still selected.
-- Reject explicitly disconnected, absent, muted, overheated, damaged, or blocked targets.
+- Confirm the controller is connected, the APP and requested slot exist, and the target channel is still selected.
+- Warn but continue for `hasDevice: false`, a disconnected device, a muted channel, or an unattached OVC accessory; do not ask for another confirmation.
+- Reject a missing APP/slot, overheated channel, damaged output, or blocked channel.
 - Require finite integers and explicit parameters.
 - Never bypass MCP validation with SDK calls or handcrafted frames.
 - Never claim delivery after disconnect or tool failure.

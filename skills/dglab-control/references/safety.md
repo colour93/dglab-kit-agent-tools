@@ -18,9 +18,9 @@ The SDK does not define a universal device maximum. When the selected channel re
 
 ## Execution checks
 
-1. Verify the session target is live and the channel is eligible.
+1. Verify the APP and requested device slot exist. Treat `hasDevice: false`, a disconnected device, a muted channel, or an unattached OVC accessory as warnings and continue without asking for confirmation. Continue to reject overheat, output damage, and blocked-channel states.
 2. Validate type compatibility, bounds, and duration.
-3. State `APP`, device name/type, `slotId`, channel, and normalized command before execution.
+3. State `APP`, device name/type, `slotId`, channel, normalized command, and any warnings before execution. This is an execution notice, not an approval prompt.
 4. Call the corresponding MCP tool; do not bypass its validation with handcrafted SDK or protocol calls.
 5. Await and handle command completion or rejection. A direct stop/clear request bypasses normal confirmation and takes priority.
 
