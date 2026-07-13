@@ -1,0 +1,19 @@
+# JavaScript dependencies and package-manager caches
+node_modules/
+.bun/
+
+# Build output and generated QR images
+dist/
+coverage/
+*.png
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# System and editor files
+.DS_Store
+.idea/
+.vscode/

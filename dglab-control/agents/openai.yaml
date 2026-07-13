@@ -1,0 +1,4 @@
+interface:
+  display_name: "DG-LAB 设备控制"
+  short_description: "用自然语言控制 DG-LAB 设备并生成配对二维码"
+  default_prompt: "Use $dglab-control to connect and control a DG-LAB device from natural-language instructions."
