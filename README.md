@@ -8,6 +8,7 @@
 
 - `dglab-control/`：可安装的 skill。
   - `SKILL.md`：V4 校验、配对、会话与控制短流程。
+  - `scripts/device-control-console.mjs`：单文件 V4 常驻控制台，提供本机 GUI、结构化 CLI、REST API 与 SSE 事件流，便于 agent 中途接管。
   - `scripts/generate-pairing-qr.mjs`：使用 `qrcode` 生成配对 PNG，并可通过 `qrcode-terminal` 输出 CLI 二维码。
   - `references/intent-contract.md`：聊天触发和会话选择规则。
   - `references/safety.md`：限幅、时长、断开清理与设备状态校验。
@@ -27,3 +28,11 @@ bun add dglab-kit qrcode qrcode-terminal
 ```bash
 npm install dglab-kit qrcode qrcode-terminal
 ```
+
+极速控制可直接启动单文件例程：
+
+```bash
+bun dglab-control/scripts/device-control-console.mjs serve --terminal-qr
+```
+
+随后打开输出的本机 GUI，或在另一个终端通过同一文件执行 `status`、`select`、`increase`、`temporary`、`waveform`、`stop` 等命令。

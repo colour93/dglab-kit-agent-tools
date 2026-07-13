@@ -1,6 +1,6 @@
 ---
 name: dglab-control
-description: Control paired DG-LAB devices from natural-language instructions with the dglab-kit npm package. Use when building or operating a DG-LAB controller, connecting a V3 or V4 relay, discovering paired devices, translating requests into bounded strength, temporary-intensity, waveform, or stop commands, or generating a scannable DG-LAB pairing QR code. Default to verified V4 and the official relay; support a user-specified relay or explicit V3 request.
+description: Control paired DG-LAB devices from natural-language instructions with the dglab-kit npm package. Use when building or operating a DG-LAB controller, launching an agent-friendly local GUI/CLI control console, connecting a V3 or V4 relay, discovering paired devices, translating requests into bounded strength, temporary-intensity, waveform, or stop commands, or generating a scannable DG-LAB pairing QR code. Default to verified V4 and the official relay; support a user-specified relay or explicit V3 request.
 ---
 
 # DG-LAB Control
@@ -35,6 +35,26 @@ bun scripts/generate-pairing-qr.mjs --target-id "$TARGET_ID" --output ./dglab-pa
 ```
 
 Pass `--terminal` for a CLI QR, `--server <ws-url>` for a custom relay, and `--version v3` only for an explicit V3 session. Regenerate the QR after every controller reconnect, relay/protocol change, or `targetId` change; discard old images and URLs.
+
+## Launch the local control console
+
+Use `scripts/device-control-console.mjs` when fast interactive control or agent handoff is requested. It is a single-file V4 controller that keeps the pairing WebSocket alive and exposes the same live session through a loopback-only GUI, CLI, REST API, and SSE event stream.
+
+```bash
+bun scripts/device-control-console.mjs serve --terminal-qr
+```
+
+Open the printed GUI URL or control it from another shell. Always inspect `status`, explicitly select a discovered target, then send bounded commands. The selection remains valid only for the live session.
+
+```bash
+bun scripts/device-control-console.mjs status
+bun scripts/device-control-console.mjs select --client-id <id> --slot-id <id> --channel A
+bun scripts/device-control-console.mjs increase --delta 2
+bun scripts/device-control-console.mjs waveform --name BUBBLE --duration-ms 2000
+bun scripts/device-control-console.mjs stop
+```
+
+Read `GET http://127.0.0.1:47821/api/schema` for the agent API contract and `GET /api/events` for SSE updates. Use `POST /api/command` for direct tool-style calls. Prefer the bundled CLI because it emits structured JSON and avoids rewriting requests. Run `shutdown` when finished; it clears touched targets before disconnecting.
 
 ## Select a transport
 
