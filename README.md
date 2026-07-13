@@ -1,38 +1,77 @@
-# DG-LAB Kit Skill
+# DG-LAB Kit MCP & Skill
 
-供 Codex 使用的 DG-LAB 设备控制 skill：基于 `dglab-kit` 将自然语言请求映射为设备控制命令，并生成可扫描的配对二维码。
+基于 `dglab-kit` 的本地 DG-LAB 控制方案：MCP 持有设备连接和会话状态，Skill 负责自然语言意图、安全策略与调用流程。
 
-默认使用 V4 与官方中继 `wss://ws.dungeon-lab.cn/`；支持自定义中继和显式 V3 兼容模式。Bun 为首选运行时，Node.js 为备选。
+默认使用 V4 与官方中继 `wss://ws.dungeon-lab.cn/`。MCP 通过 stdio 运行，不监听本地或公网端口。
 
 ## 目录
 
-- `dglab-control/`：可安装的 skill。
-  - `SKILL.md`：V4 校验、配对、会话与控制短流程。
-  - `scripts/device-control-console.mjs`：单文件 V4 常驻控制台，提供本机 GUI、结构化 CLI、REST API 与 SSE 事件流，便于 agent 中途接管。
-  - `scripts/generate-pairing-qr.mjs`：使用 `qrcode` 生成配对 PNG，并可通过 `qrcode-terminal` 输出 CLI 二维码。
-  - `references/intent-contract.md`：聊天触发和会话选择规则。
-  - `references/safety.md`：限幅、时长、断开清理与设备状态校验。
-  - `references/transport.md`：V4 单次指令的 HTTP/WS 路由与鉴权规则。
-  - `references/protocol.md`：V3/V4 连接、配对、设备筛选与 API 参考。
+- `mcp/`：TypeScript 编写、Bun 优先的本地 stdio MCP Server。
+- `skills/dglab-control/`：供 Codex 使用的控制 Skill。
+  - `SKILL.md`：配对、设备选择和 MCP 调用流程。
+  - `references/intent-contract.md`：自然语言意图映射。
+  - `references/safety.md`：限幅、时长和断开清理规则。
+  - `references/protocol.md`：`dglab-kit` V3/V4 协议参考。
+  - `references/transport.md`：扩展传输方式时使用的 V4 HTTP/WS 参考。
 
-## 使用
-
-将 `dglab-control` 安装或复制到 Codex skills 目录后，以 `$dglab-control` 调用。目标控制项目安装依赖：
+## 安装 MCP
 
 ```bash
-bun add dglab-kit qrcode qrcode-terminal
+cd mcp
+bun install
 ```
 
-在没有 Bun 时，改用：
+没有 Bun 时可使用 Node.js 22+：
 
 ```bash
-npm install dglab-kit qrcode qrcode-terminal
+cd mcp
+npm install
 ```
 
-极速控制可直接启动单文件例程：
+Codex 的 `config.toml` 可添加本地 stdio MCP。将路径替换为仓库的绝对路径：
 
-```bash
-bun dglab-control/scripts/device-control-console.mjs serve --terminal-qr
+```toml
+[mcp_servers.dglab]
+command = "bun"
+args = ["run", "/absolute/path/to/dglab-kit-mcp/mcp/src/index.ts"]
+startup_timeout_sec = 20
+tool_timeout_sec = 30
 ```
 
-随后打开输出的本机 GUI，或在另一个终端通过同一文件执行 `status`、`select`、`increase`、`temporary`、`waveform`、`stop` 等命令。
+Node.js 备选配置：
+
+```toml
+[mcp_servers.dglab]
+command = "npm"
+args = ["--prefix", "/absolute/path/to/dglab-kit-mcp/mcp", "run", "start:node"]
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+```
+
+Bun 会直接运行 TypeScript；Node.js 备选通过 `tsx` 加载同一份源码，不需要维护单独的 JavaScript 构建产物。
+
+重启 MCP 客户端后，应能看到以下工具：
+
+- `dglab_connect`：连接 V4 中继并返回配对二维码。
+- `dglab_status`：查看 APP、设备、波形、选择与安全上限。
+- `dglab_select_target`：显式选择 APP、设备和通道。
+- `dglab_increase` / `dglab_decrease`：相对调整强度。
+- `dglab_set_temporary`：设置有时限的临时强度。
+- `dglab_play_waveform`：播放兼容波形。
+- `dglab_stop`：优先取消排队并清理当前通道。
+- `dglab_disconnect`：清理本进程操作过的通道并断开。
+
+## 安装 Skill
+
+将 `skills/dglab-control` 复制或链接到 Codex skills 目录，然后通过 `$dglab-control` 使用。Skill 依赖上面的 `dglab` MCP 已启用。
+
+## 安全与并发
+
+默认安全上限：单次相对变化 `5`、临时强度 `20`、持续时间 `5000ms`。可以通过环境变量设置更严格的值：
+
+- `DGLAB_MAX_DELTA`
+- `DGLAB_MAX_INTENSITY`
+- `DGLAB_MAX_DURATION_MS`
+- `DGLAB_RELAY`
+
+同一设备通道的普通控制指令按顺序执行；`dglab_stop` 不等待队列，会先使未执行指令失效，再向当前通道发送清理请求。MCP 退出或主动断开时，会尽力清理本进程操作过的通道。

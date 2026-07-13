@@ -21,7 +21,7 @@ The SDK does not define a universal device maximum. When the selected channel re
 1. Verify the session target is live and the channel is eligible.
 2. Validate type compatibility, bounds, and duration.
 3. State `APP`, device name/type, `slotId`, channel, and normalized command before execution.
-4. Send V4 operations with `immediate: true` when replacing an existing same-type task is intended.
+4. Call the corresponding MCP tool; do not bypass its validation with handcrafted SDK or protocol calls.
 5. Await and handle command completion or rejection. A direct stop/clear request bypasses normal confirmation and takes priority.
 
-On a normal shutdown, send `clearOperate(clientId, { slotId, channel })` while the socket is live, then disconnect. If a close has already occurred, do not send a new command; invalidate the selection and require a new pairing. A connection close cancels SDK pending operations locally, but it is not a substitute for sending a live clear command first.
+On a normal shutdown, call `dglab_disconnect`; it clears touched channels while the socket is live before disconnecting. If a close has already occurred, do not send a new command; invalidate the selection and require a new pairing.

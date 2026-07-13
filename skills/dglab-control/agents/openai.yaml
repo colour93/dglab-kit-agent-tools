@@ -1,0 +1,4 @@
+interface:
+  display_name: "DG-LAB 设备控制"
+  short_description: "通过本地 MCP 安全控制 DG-LAB 设备"
+  default_prompt: "Use $dglab-control to pair and safely control a DG-LAB device through the local MCP server."
