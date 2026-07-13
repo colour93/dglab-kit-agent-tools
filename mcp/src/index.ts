@@ -7,6 +7,8 @@ import {
   DEFAULT_LIMITS,
   DEFAULT_RELAY,
   DglabController,
+  MAX_CUSTOM_WAVEFORM_FRAMES,
+  type CustomWaveformFrames,
   type TargetInput,
 } from './controller.ts';
 import {
@@ -294,6 +296,28 @@ server.registerTool(
   safe(async ({ name, durationMs }: { name: string; durationMs: number }) => (
     textResult(await controller.waveform(name, durationMs))
   )),
+);
+
+server.registerTool(
+  'dglab_play_custom_waveform',
+  {
+    title: 'Play custom DG-LAB waveform',
+    description: 'Play explicit V2 or V3 waveform frames on the selected compatible channel for a bounded duration. Frames may be fixed-length hex strings or byte arrays. Disconnected-device or muted-channel warnings do not block output.',
+    inputSchema: {
+      frames: z.union([
+        z.array(z.string().regex(/^(?:[0-9A-Fa-f]{2})+$/)).min(1).max(MAX_CUSTOM_WAVEFORM_FRAMES),
+        z.array(z.array(z.number().int().min(0).max(255)).min(1).max(8)).min(1).max(MAX_CUSTOM_WAVEFORM_FRAMES),
+      ]),
+      version: z.union([z.literal(2), z.literal(3)]).optional(),
+      durationMs: z.number().int().min(0).max(controller.limits.durationMs),
+    },
+    annotations: { destructiveHint: false, idempotentHint: false },
+  },
+  safe(async ({ frames, version, durationMs }: {
+    frames: CustomWaveformFrames;
+    version?: 2 | 3;
+    durationMs: number;
+  }) => textResult(await controller.customWaveform(frames, durationMs, version))),
 );
 
 server.registerTool(

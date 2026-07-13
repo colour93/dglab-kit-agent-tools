@@ -1,6 +1,6 @@
 ---
 name: dglab-control
-description: Control paired DG-LAB devices through the local dglab-kit MCP server. Use when connecting the V4 relay, pairing an APP, discovering or selecting devices, translating natural language into bounded strength, temporary-intensity, waveform, stop, or disconnect tool calls, or explaining the active DG-LAB session.
+description: Control paired DG-LAB devices through the local dglab-kit MCP server. Use when connecting the V4 relay, pairing an APP, discovering or selecting devices, translating natural language into bounded strength, temporary-intensity, preset or custom waveform, stop, or disconnect tool calls, or explaining the active DG-LAB session.
 ---
 
 # DG-LAB Control
@@ -34,7 +34,8 @@ Accept hardware control only through the active interaction described in [refere
 | custom or ambiguous wording | Use a command template the user explicitly defined in the active interaction; otherwise ask for explicit parameters. |
 | increase / decrease | Require an explicit delta. |
 | temporary intensity | Require an explicit intensity and duration. |
-| waveform | Require a compatible waveform and duration. |
+| preset waveform | Require a compatible waveform name and duration. |
+| custom waveform | Require explicit frames and duration; require the version unless every frame has the V3 shape. |
 | select device / channel | Ask for an unambiguous selection. |
 
 The MCP persists a selected target only for its current process. Reuse it for later messages, but call `dglab_status` after APP/device removal, reconnect, relay change, or disconnect. If multiple APPs or device slots exist and none is selected, ask the user instead of choosing the first item. A reported disconnected device, `hasDevice: false`, muted channel, or unattached OVC accessory is warning-only: tell the user output may have no physical effect, then execute without requesting approval. A missing requested slot, overheat, output damage, or blocked channel remains a hard failure.
@@ -44,6 +45,7 @@ The MCP persists a selected target only for its current process. Reuse it for la
 - Use `dglab_increase` and `dglab_decrease` only with an explicit bounded delta.
 - Use `dglab_set_temporary` only with explicit intensity and duration.
 - Use `dglab_play_waveform` only with a compatible waveform returned by `dglab_status`.
+- Use `dglab_play_custom_waveform` only with user-provided or explicitly user-approved frames. Pass V2 frames as 3-byte arrays/6-digit hex strings and V3 frames as 8-byte arrays/16-digit hex strings; default to V3 only when the user omitted the version and supplied valid V3 frames. Never invent missing raw frame data.
 - Use `dglab_stop` as the priority path; it cancels queued work for the channel before clearing it.
 - Use `dglab_start_relay` and `dglab_stop_relay` only for an explicitly requested embedded relay lifecycle.
 - Use `dglab_disconnect` for normal shutdown; it clears touched channels and stops an embedded relay unless the user explicitly keeps it running.

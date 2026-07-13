@@ -13,6 +13,7 @@ export const DEFAULT_LIMITS = Object.freeze({
   intensity: 20,
   durationMs: 5_000,
 });
+export const MAX_CUSTOM_WAVEFORM_FRAMES = 50;
 
 export type SafetyLimits = {
   delta: number;
@@ -47,6 +48,8 @@ type DeviceState = {
 };
 
 type WaveformMap = Record<string, { raw: string[] }>;
+
+export type CustomWaveformFrames = string[] | number[][];
 
 export type TargetInput = {
   clientId?: string;
@@ -172,6 +175,32 @@ function waveformsFor(deviceType: string): WaveformMap | undefined {
   }
   if (deviceType === 'OVC_1') return OVC_WAVEFORMS as unknown as WaveformMap;
   return undefined;
+}
+
+function validateCustomWaveformFrames(
+  framesInput: CustomWaveformFrames,
+  versionInput: number,
+): { frames: CustomWaveformFrames; version: 2 | 3 } {
+  const version = finiteInteger(versionInput, 'version', { min: 2, max: 3 }) as 2 | 3;
+  if (!Array.isArray(framesInput) || framesInput.length < 1 || framesInput.length > MAX_CUSTOM_WAVEFORM_FRAMES) {
+    throw new Error(`frames must contain 1 to ${MAX_CUSTOM_WAVEFORM_FRAMES} waveform frames`);
+  }
+
+  const frameLength = version === 2 ? 3 : 8;
+  if (typeof framesInput[0] === 'string') {
+    const pattern = new RegExp(`^[0-9A-Fa-f]{${frameLength * 2}}$`);
+    if (!framesInput.every((frame) => typeof frame === 'string' && pattern.test(frame))) {
+      throw new Error(`version ${version} hex frames must each contain exactly ${frameLength} bytes`);
+    }
+    return { frames: (framesInput as string[]).map((frame) => frame.toUpperCase()), version };
+  }
+
+  if (!framesInput.every((frame) => Array.isArray(frame)
+    && frame.length === frameLength
+    && frame.every((value) => Number.isInteger(value) && value >= 0 && value <= 255))) {
+    throw new Error(`version ${version} numeric frames must each contain exactly ${frameLength} integer bytes from 0 to 255`);
+  }
+  return { frames: framesInput as number[][], version };
 }
 
 function publicDevice(device: DeviceState) {
@@ -459,6 +488,32 @@ export class DglabController {
       durationMs,
       waveform.raw,
       { immediate: true },
+    ));
+    this.record(`finished: ${summary}`);
+    return { summary, warnings: target.warnings, result };
+  }
+
+  async customWaveform(framesInput: CustomWaveformFrames, durationInput: number, versionInput = 3) {
+    const target = this.resolveTarget();
+    const socket = this.requireSocket();
+    if (!waveformsFor(target.device.type)) {
+      throw new Error(`device type ${target.device.type} does not support waveform commands`);
+    }
+    const { frames, version } = validateCustomWaveformFrames(framesInput, versionInput);
+    const durationMs = finiteInteger(durationInput, 'durationMs', { min: 0, max: this.limits.durationMs });
+    const summary = this.summary(
+      target,
+      `custom waveform v${version} with ${frames.length} frames for ${durationMs}ms`,
+    );
+    this.touchedTargets.set(this.targetKey(target), target);
+    this.record(`queued: ${summary}`);
+    const result = await this.enqueue(target, () => socket.sendPulse(
+      target.clientId,
+      target.slotId,
+      CHANNELS[target.channel],
+      durationMs,
+      frames,
+      { immediate: true, version },
     ));
     this.record(`finished: ${summary}`);
     return { summary, warnings: target.warnings, result };

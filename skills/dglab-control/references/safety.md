@@ -11,6 +11,7 @@ Use these conservative defaults unless the user explicitly configures stricter l
 | Maximum relative change per command | `5` |
 | Maximum temporary intensity | `20` |
 | Maximum waveform or temporary duration | `5,000 ms` |
+| Maximum custom waveform frames | `50` |
 
 Require finite integers. Require nonnegative values for temporary intensity and duration, and a positive magnitude for a relative change. Reject out-of-policy values instead of silently clamping them; ask the user to send a bounded value.
 
@@ -19,7 +20,7 @@ The SDK does not define a universal device maximum. When the selected channel re
 ## Execution checks
 
 1. Verify the APP and requested device slot exist. Treat `hasDevice: false`, a disconnected device, a muted channel, or an unattached OVC accessory as warnings and continue without asking for confirmation. Continue to reject overheat, output damage, and blocked-channel states.
-2. Validate type compatibility, bounds, and duration.
+2. Validate type compatibility, bounds, duration, and custom frame shape. Accept only complete V2/V3 frames with integer byte values from `0` to `255`; never repair, pad, truncate, or invent frame data.
 3. State `APP`, device name/type, `slotId`, channel, normalized command, and any warnings before execution. This is an execution notice, not an approval prompt.
 4. Call the corresponding MCP tool; do not bypass its validation with handcrafted SDK or protocol calls.
 5. Await and handle command completion or rejection. A direct stop/clear request bypasses normal confirmation and takes priority.

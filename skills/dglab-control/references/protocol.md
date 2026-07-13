@@ -42,6 +42,8 @@ Use waveform collections only for compatible types:
 | `OVC_1` | `OVC_WAVEFORMS` |
 | `BMTR_1` | No waveform or intensity command through this skill |
 
+Custom waveforms use the same compatible device types. `dglab_play_custom_waveform` accepts 1–50 frames as either hexadecimal strings or integer byte arrays. V2 frames contain 3 bytes (`[a, b, interval]`); V3 frames contain 8 bytes (`[a1, a2, a3, a4, b1, b2, b3, b4]`). Hex strings therefore contain exactly 6 or 16 hexadecimal digits respectively. Use V3 when omitted only if every frame has the V3 shape.
+
 If no compatible device slot exists, report the discovered APP/device status and ask the user to pair, connect, or select another slot.
 
 ## V4 commands
@@ -65,6 +67,14 @@ await socket.sendPulse(
   2_000,
   COYOTE_WAVEFORMS[COYOTE_WAVEFORM.BUBBLE].raw,
   { immediate: true },
+);
+await socket.sendPulse(
+  clientId,
+  slotId,
+  V4Channel.A,
+  2_000,
+  ['0A0A0A0A00000000', '0A0A0A0A64646464'],
+  { immediate: true, version: 3 },
 );
 await socket.clearOperate(clientId, { slotId, channel: V4Channel.A });
 ```

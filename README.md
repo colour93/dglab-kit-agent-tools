@@ -50,6 +50,7 @@ args = ["--prefix", "/absolute/path/to/dglab-kit-skill/mcp", "run", "start:node"
 - “查看设备并选择 A 通道。”
 - “A 通道增加 2。”
 - “强度设为 10，持续 2 秒。”
+- “播放 V3 自定义波形 `0A0A0A0A00000000`、`0A0A0A0A64646464`，持续 2 秒。”
 - “停止。”
 
 完整流程为：连接 Relay → APP 扫码 → 查看设备 → 明确选择设备和通道 → 执行控制。
@@ -80,6 +81,7 @@ DGLAB_EMBEDDED_ALLOW_NETWORK_EXPOSURE = "true"
 | 单次强度变化 | `5` |
 | 临时强度 | `20` |
 | 临时强度或波形时长 | `5000 ms` |
+| 自定义波形帧数 | `50` |
 
 可分别通过 `DGLAB_MAX_DELTA`、`DGLAB_MAX_INTENSITY` 和 `DGLAB_MAX_DURATION_MS` 设置更严格的值。
 

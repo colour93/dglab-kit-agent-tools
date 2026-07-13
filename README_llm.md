@@ -111,9 +111,10 @@ Remote mode uses `relay`, a `ws://` or `wss://` V4 Relay URL.
 | `dglab_decrease` | `delta` | Active target; integer `1..configured max delta`. |
 | `dglab_set_temporary` | `intensity`, `durationMs` | Active target; both integers within configured/device bounds. Returns to zero at task end. |
 | `dglab_play_waveform` | `name`, `durationMs` | Active target; name appears in compatible waveforms from status. |
+| `dglab_play_custom_waveform` | `frames`, `durationMs`, `version?` | Active compatible target; 1–50 complete V2 or V3 frames. Version defaults to V3. |
 | `dglab_stop` | optional complete target | Use active selection, or provide all of `clientId`, `slotId`, and `channel`. Cancels queued work before clearing. |
 
-Do not partially specify a target to `dglab_stop`. Do not issue intensity or waveform commands to `BMTR_1`. Compatible waveform families are reported by `dglab_status` and derive from device type.
+Do not partially specify a target to `dglab_stop`. Do not issue intensity or waveform commands to `BMTR_1`. Compatible waveform families are reported by `dglab_status` and derive from device type. Custom V2 frames are 3 integer bytes or 6 hex digits; custom V3 frames are 8 integer bytes or 16 hex digits. Do not mix representations in one call.
 
 Bounded device-output tools intentionally publish `destructiveHint: false` so clients do not turn every already-requested command into another approval step. Runtime ceilings, target validation, serialization, and hard device-fault checks remain enforced. Starting a network-exposed relay remains a higher-risk operation.
 
@@ -126,6 +127,7 @@ Bounded device-output tools intentionally publish `destructiveHint: false` so cl
 | decrease N | positive integer delta | `dglab_decrease` |
 | intensity N for T | intensity and duration | `dglab_set_temporary` |
 | play waveform X for T | compatible name and duration | `dglab_play_waveform` |
+| play custom waveform frames for T | explicit V2/V3 frames, version, and duration | `dglab_play_custom_waveform` |
 | select device/channel | unambiguous APP, slot, channel | `dglab_select_target` |
 
 If required data is missing, ask for it. Reject out-of-policy values rather than silently clamping. A custom alias may reuse a fully specified bounded command template the user defined earlier in the active interaction; otherwise ask for explicit parameters.
@@ -139,6 +141,7 @@ Default ceilings:
 | Relative delta per call | `5` | `DGLAB_MAX_DELTA` |
 | Temporary intensity | `20` | `DGLAB_MAX_INTENSITY` |
 | Temporary/waveform duration | `5000 ms` | `DGLAB_MAX_DURATION_MS` |
+| Custom waveform frames | `50` | fixed MCP ceiling |
 
 Environment variables may only make these defaults stricter; runtime validation rejects larger values. Effective intensity maximum is the smaller of the configured ceiling and the device-reported channel maximum when available.
 

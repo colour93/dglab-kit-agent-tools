@@ -10,7 +10,7 @@ Normalize an accepted command before sending it:
 
 ```ts
 type Command = {
-  kind: 'stop' | 'increase' | 'decrease' | 'temporary' | 'waveform' | 'select';
+  kind: 'stop' | 'increase' | 'decrease' | 'temporary' | 'waveform' | 'custom-waveform' | 'select';
   clientId?: string;
   slotId?: string;
   deviceType?: 'COYOTE_020' | 'COYOTE_030' | 'OVC_1' | 'BMTR_1';
@@ -19,6 +19,8 @@ type Command = {
   intensity?: number;
   durationMs?: number;
   waveform?: string;
+  frames?: string[] | number[][];
+  waveformVersion?: 2 | 3;
 };
 ```
 
@@ -32,6 +34,7 @@ Resolve an explicit APP, device slot, or channel from the message first. Otherwi
 | “加/减 N” | `increase` / `decrease` | `delta` | `dglab_increase` / `dglab_decrease` |
 | “强度 N，持续 T” | `temporary` | `intensity`, `durationMs` | `dglab_set_temporary` |
 | “播放 <波形> T 秒” | `waveform` | compatible waveform, `durationMs` | `dglab_play_waveform` |
+| “播放自定义波形 <帧> T 秒” | `custom-waveform` | explicit frames, V2/V3 version, `durationMs` | `dglab_play_custom_waveform` |
 | “选 X 的 A 通道” | `select` | unambiguous target | `dglab_select_target` |
 | “测试”等项目自定义术语 | the explicit command template defined earlier in the active interaction | values from that template | mapped bounded MCP tool(s) |
 
