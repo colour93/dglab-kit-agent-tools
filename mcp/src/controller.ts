@@ -73,6 +73,7 @@ type PairingQr = {
   appSocketUrl: string;
   qrPayload: string;
   qrPngBase64: string;
+  qrTerminal: string;
 };
 
 type SdkChannel = (typeof V4Channel)[keyof typeof V4Channel];
@@ -106,6 +107,20 @@ function pairingPayload(relayUrl: string, targetId: string) {
   return {
     appSocketUrl,
     qrPayload: `https://dungeon-lab.cn/s/?v=1&action=socket&url=${encodeURIComponent(appSocketUrl)}`,
+  };
+}
+
+async function pairingQr(relayUrl: string, targetId: string): Promise<PairingQr> {
+  const { appSocketUrl, qrPayload } = pairingPayload(relayUrl, targetId);
+  const [dataUrl, qrTerminal] = await Promise.all([
+    QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 2, width: 768 }),
+    QRCode.toString(qrPayload, { type: 'terminal', errorCorrectionLevel: 'M', margin: 1, small: true }),
+  ]);
+  return {
+    appSocketUrl,
+    qrPayload,
+    qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1),
+    qrTerminal,
   };
 }
 
@@ -241,10 +256,8 @@ export class DglabController {
     const advertisedRelay = validateRelay(advertisedRelayInput ?? relay);
     if (this.targetId && this.qr && this.socket && relay === this.relay) {
       if (advertisedRelay !== this.advertisedRelay) {
-        const { appSocketUrl, qrPayload } = pairingPayload(advertisedRelay, this.targetId);
-        const dataUrl = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 2, width: 768 });
         this.advertisedRelay = advertisedRelay;
-        this.qr = { appSocketUrl, qrPayload, qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+        this.qr = await pairingQr(advertisedRelay, this.targetId);
       }
       return { reused: true, relay, advertisedRelay, targetId: this.targetId, ...this.qr };
     }
@@ -264,17 +277,7 @@ export class DglabController {
       if (this.socket !== socket) throw new Error('connection was replaced before pairing completed');
 
       this.targetId = targetId;
-      const { appSocketUrl, qrPayload } = pairingPayload(advertisedRelay, targetId);
-      const dataUrl = await QRCode.toDataURL(qrPayload, {
-        errorCorrectionLevel: 'M',
-        margin: 2,
-        width: 768,
-      });
-      this.qr = {
-        appSocketUrl,
-        qrPayload,
-        qrPngBase64: dataUrl.slice(dataUrl.indexOf(',') + 1),
-      };
+      this.qr = await pairingQr(advertisedRelay, targetId);
       this.record(`relay connected; targetId=${targetId}`);
       return { reused: false, relay, advertisedRelay, targetId, ...this.qr };
     } catch (error) {

@@ -19,7 +19,7 @@ if (!targetId || socket.state !== DGLAB_SOCKET_STATE.WaitingForPeer) {
 
 `connect()` resolves after the V4 relay sends `hello`. This validates the controller-side V4 handshake, not a controllable APP. On `client-attached`, call `await socket.requestDevices(clientId)`; optionally call `await socket.ping(clientId)` to verify the APP RPC path. If either step fails, stop and ask the user to select another relay or explicitly choose V3. Never automatically retry as V3.
 
-Listen for `error`, `close`, `client-disconnected`, `devices`, and `device`. A V4 controller can have multiple APPs; `clientId` identifies an APP and `slotId` identifies a device in it. For one-off HTTP dispatch after pairing, follow [transport.md](transport.md).
+Listen for `error`, `close`, `client-disconnected`, `devices`, and `device`. A V4 controller can have multiple APPs; `clientId` identifies an APP and `slotId` identifies a device in it. V4 commands use the controller WebSocket; the relay has no HTTP command API.
 
 ## Device eligibility and waveform choice
 
@@ -89,7 +89,7 @@ V3 supports one paired APP, `setStrength`, `addStrength`, `reduceStrength`, `sen
 
 ## QR payloads and lifetime
 
-Use the controller `targetId`, never an APP `clientId` or V4 `secret`.
+Use the controller `targetId`, never an APP `clientId`.
 
 | Version | APP socket address | QR payload |
 | --- | --- | --- |
@@ -97,3 +97,5 @@ Use the controller `targetId`, never an APP `clientId` or V4 `secret`.
 | V3 | `<relay>/<targetId>` | `https://www.dungeon-lab.com/app-download.php#DGLAB-SOCKET#<APP socket address>` |
 
 Use `URL.searchParams.set('tid', targetId)` for V4 and remove trailing slashes before appending the V3 path segment. A QR is valid only for its current controller connection. Mark it stale and regenerate it after reconnect, target ID change, relay change, protocol change, `idle_timeout`, or socket close.
+
+Preserve the relay URL pathname as the global WebSocket prefix. For example, a controller connected to `wss://relay.example/v4` must generate an APP URL at `wss://relay.example/v4?tid=<targetId>`.

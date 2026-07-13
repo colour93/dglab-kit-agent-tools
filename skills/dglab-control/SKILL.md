@@ -14,12 +14,12 @@ Use the local `dglab-kit` stdio MCP tools. Do not write protocol frames or start
 - Treat the session as controllable only after `dglab_connect`, APP attachment, successful device discovery, and explicit `dglab_select_target`.
 - Use only the active session target: `clientId`, `slotId`, `deviceType`, and channel. Stop immediately on a direct stop or clear request.
 - Apply [references/safety.md](references/safety.md) before every device command. The MCP also enforces the same ceilings and serializes commands per selected channel.
-- Keep protocol facts in [references/protocol.md](references/protocol.md) and intent normalization in [references/intent-contract.md](references/intent-contract.md). Read [references/transport.md](references/transport.md) only when extending the MCP transport.
+- Keep protocol facts in [references/protocol.md](references/protocol.md) and intent normalization in [references/intent-contract.md](references/intent-contract.md).
 
 ## Connect and pair
 
-1. Resolve relay mode. Use remote by default. For embedded mode, call `dglab_list_relay_addresses`, present viable addresses, and ask the user to select one when the APP is on another device.
-2. Call `dglab_connect` with the selected mode and show its QR image. Never expose a relay secret.
+1. Resolve relay mode. Use remote by default. For embedded mode, call `dglab_list_relay_addresses`, preserving the requested global path prefix, present viable addresses, and ask the user to select one when the APP is on another device. Preserve its randomly selected high port unless the user specifies a port.
+2. Choose `qrOutput: image` in a GUI or any interface that can display or attach response images; choose `qrOutput: terminal` in a CLI. Call `dglab_connect`, present the returned QR in that form, then put the returned `Connection URL` as plain text directly below it. Always include the URL even when the QR is displayed successfully.
 3. After the APP scans the QR, call `dglab_status` until eligible devices are present.
 4. If more than one APP or device exists, ask the user to choose. Never select by array position.
 5. Call `dglab_select_target` with an exact `clientId`, `slotId`, and channel.

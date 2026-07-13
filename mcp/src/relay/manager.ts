@@ -1,15 +1,18 @@
 import { networkInterfaces } from 'node:os';
+import { randomInt } from 'node:crypto';
 import { startV4Relay, type V4RelayHandle } from './v4-relay.ts';
 
 export type EmbeddedRelayConfig = {
   bindHost?: string;
   port?: number;
+  prefix?: string;
   controllerUrl?: string;
   advertisedUrl?: string;
   allowNetworkExposure?: boolean;
 };
 
-export type EmbeddedRelayDefaults = Required<Omit<EmbeddedRelayConfig, 'controllerUrl' | 'advertisedUrl'>> & {
+export type EmbeddedRelayDefaults = Required<Omit<EmbeddedRelayConfig, 'port' | 'controllerUrl' | 'advertisedUrl'>> & {
+  port?: number;
   controllerUrl?: string;
   advertisedUrl?: string;
 };
@@ -18,12 +21,15 @@ type RunningRelay = {
   handle: V4RelayHandle;
   bindHost: string;
   port: number;
+  prefix: string;
   controllerUrl: string;
   advertisedUrl: string;
   networkExposed: boolean;
 };
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const DYNAMIC_PORT_MIN = 49_152;
+const DYNAMIC_PORT_MAX_EXCLUSIVE = 65_536;
 
 function wsUrl(value: string, name: string): string {
   let url: URL;
@@ -38,9 +44,16 @@ function wsUrl(value: string, name: string): string {
   return url.toString();
 }
 
-function hostUrl(host: string, port: number): string {
+function normalizePrefix(value = '/'): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '/';
+  const prefixed = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return prefixed.length > 1 ? prefixed.replace(/\/+$/, '') : prefixed;
+}
+
+function hostUrl(host: string, port: number, prefix: string): string {
   const formatted = host.includes(':') ? `[${host}]` : host;
-  return `ws://${formatted}:${port}/`;
+  return `ws://${formatted}:${port}${prefix}`;
 }
 
 function isLoopback(host: string): boolean {
@@ -57,18 +70,24 @@ function validPort(value: number): number {
 export class EmbeddedRelayManager {
   readonly defaults: EmbeddedRelayDefaults;
   private running: RunningRelay | null = null;
+  private suggestedPort: number | null = null;
 
   constructor(defaults: EmbeddedRelayDefaults) {
     this.defaults = defaults;
   }
 
-  listAddresses(portInput?: number) {
-    const port = validPort(portInput ?? this.defaults.port);
+  listAddresses(portInput?: number, prefixInput?: string) {
+    const configuredPort = portInput ?? this.defaults.port;
+    if (configuredPort !== undefined) this.suggestedPort = null;
+    const port = configuredPort === undefined
+      ? (this.suggestedPort ??= randomInt(DYNAMIC_PORT_MIN, DYNAMIC_PORT_MAX_EXCLUSIVE))
+      : validPort(configuredPort);
+    const prefix = normalizePrefix(prefixInput ?? this.defaults.prefix);
     const addresses = [{
       scope: 'loopback',
       interface: 'loopback',
       address: '127.0.0.1',
-      advertisedUrl: hostUrl('127.0.0.1', port),
+      advertisedUrl: hostUrl('127.0.0.1', port, prefix),
       reachableFromPhone: false,
     }];
     for (const [name, entries] of Object.entries(networkInterfaces())) {
@@ -78,22 +97,23 @@ export class EmbeddedRelayManager {
           scope: 'lan',
           interface: name,
           address: entry.address,
-          advertisedUrl: hostUrl(entry.address, port),
+          advertisedUrl: hostUrl(entry.address, port, prefix),
           reachableFromPhone: true,
         });
       }
     }
-    return { port, addresses };
+    return { port, prefix, addresses };
   }
 
   status() {
     if (!this.running) return { running: false, runtime: process.versions.bun ? 'bun' : 'node' };
-    const { bindHost, port, controllerUrl, advertisedUrl, networkExposed } = this.running;
+    const { bindHost, port, prefix, controllerUrl, advertisedUrl, networkExposed } = this.running;
     return {
       running: true,
       runtime: process.versions.bun ? 'bun' : 'node',
       bindHost,
       port,
+      prefix,
       controllerUrl,
       advertisedUrl,
       networkExposed,
@@ -105,7 +125,12 @@ export class EmbeddedRelayManager {
       throw new Error('embedded relay requires Bun; Node fallback supports remote relay mode only');
     }
     const bindHost = input.bindHost ?? this.defaults.bindHost;
-    const port = validPort(input.port ?? this.defaults.port);
+    const configuredPort = input.port ?? this.defaults.port;
+    const port = configuredPort === undefined
+      ? (this.suggestedPort ?? randomInt(DYNAMIC_PORT_MIN, DYNAMIC_PORT_MAX_EXCLUSIVE))
+      : validPort(configuredPort);
+    this.suggestedPort = null;
+    const prefix = normalizePrefix(input.prefix ?? this.defaults.prefix);
     const networkExposed = !isLoopback(bindHost);
     const allowed = input.allowNetworkExposure ?? this.defaults.allowNetworkExposure;
     if (networkExposed && !allowed) {
@@ -114,7 +139,7 @@ export class EmbeddedRelayManager {
 
     const controllerHost = bindHost === '0.0.0.0' || bindHost === '::' ? '127.0.0.1' : bindHost;
     const controllerUrl = wsUrl(
-      input.controllerUrl ?? this.defaults.controllerUrl ?? hostUrl(controllerHost, port),
+      input.controllerUrl ?? this.defaults.controllerUrl ?? hostUrl(controllerHost, port, prefix),
       'controllerUrl',
     );
     const advertisedInput = input.advertisedUrl ?? this.defaults.advertisedUrl;
@@ -127,14 +152,23 @@ export class EmbeddedRelayManager {
       this.running
       && this.running.bindHost === bindHost
       && this.running.port === port
+      && this.running.prefix === prefix
       && this.running.controllerUrl === controllerUrl
       && this.running.advertisedUrl === advertisedUrl
     ) {
       return { reused: true, ...this.status() };
     }
     await this.stop();
-    const handle = startV4Relay({ bindHost, port });
-    this.running = { handle, bindHost, port: handle.port, controllerUrl, advertisedUrl, networkExposed };
+    const handle = startV4Relay({ bindHost, port, prefix });
+    this.running = {
+      handle,
+      bindHost,
+      port: handle.port,
+      prefix: handle.prefix,
+      controllerUrl,
+      advertisedUrl,
+      networkExposed,
+    };
     return { reused: false, ...this.status() };
   }
 

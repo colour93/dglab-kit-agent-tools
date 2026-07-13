@@ -19,6 +19,7 @@ type RelayMode = 'remote' | 'embedded';
 type ConnectInput = EmbeddedRelayConfig & {
   mode?: RelayMode;
   relay?: string;
+  qrOutput?: 'image' | 'terminal';
 };
 
 type ControllerConnection = Awaited<ReturnType<DglabController['connect']>>;
@@ -30,6 +31,11 @@ function envInteger(name: string, fallback: number, min: number, max: number): n
     throw new Error(`${name} must be an integer from ${min} to ${max}`);
   }
   return value;
+}
+
+function envOptionalInteger(name: string, min: number, max: number): number | undefined {
+  if (process.env[name] === undefined) return undefined;
+  return envInteger(name, min, min, max);
 }
 
 function envBoolean(name: string, fallback = false): boolean {
@@ -59,7 +65,8 @@ const controller = new DglabController({
 
 const embeddedRelay = new EmbeddedRelayManager({
   bindHost: process.env.DGLAB_EMBEDDED_BIND_HOST ?? '127.0.0.1',
-  port: envInteger('DGLAB_EMBEDDED_PORT', 9998, 1, 65_535),
+  port: envOptionalInteger('DGLAB_EMBEDDED_PORT', 1, 65_535),
+  prefix: process.env.DGLAB_EMBEDDED_PREFIX ?? '/',
   controllerUrl: process.env.DGLAB_EMBEDDED_CONTROLLER_URL,
   advertisedUrl: process.env.DGLAB_EMBEDDED_ADVERTISED_URL,
   allowNetworkExposure: envBoolean('DGLAB_EMBEDDED_ALLOW_NETWORK_EXPOSURE'),
@@ -68,7 +75,7 @@ const embeddedRelay = new EmbeddedRelayManager({
 const server = new McpServer(
   { name: 'dglab-kit', version: '0.1.0' },
   {
-    instructions: 'Connect and pair first, inspect status, explicitly select a target, then send bounded commands. Stop requests take priority. Never reveal relay secrets.',
+    instructions: 'Connect and pair first, inspect status, explicitly select a target, then send bounded commands. Stop requests take priority.',
   },
 );
 
@@ -96,11 +103,16 @@ server.registerTool(
   'dglab_list_relay_addresses',
   {
     title: 'List embedded relay addresses',
-    description: 'List loopback and private IPv4 address candidates for an embedded relay. A phone normally needs a LAN address, not 127.0.0.1.',
-    inputSchema: { port: z.number().int().min(1).max(65_535).optional() },
+    description: 'List loopback and private IPv4 address candidates for an embedded relay. Without a configured port, reserve one random high-port candidate for the next embedded relay start. A phone normally needs a LAN address, not 127.0.0.1.',
+    inputSchema: {
+      port: z.number().int().min(1).max(65_535).optional(),
+      prefix: z.string().min(1).optional(),
+    },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   },
-  safe(async ({ port }: { port?: number }) => textResult(embeddedRelay.listAddresses(port))),
+  safe(async ({ port, prefix }: { port?: number; prefix?: string }) => (
+    textResult(embeddedRelay.listAddresses(port, prefix))
+  )),
 );
 
 server.registerTool(
@@ -111,6 +123,7 @@ server.registerTool(
     inputSchema: {
       bindHost: z.string().min(1).optional(),
       port: z.number().int().min(1).max(65_535).optional(),
+      prefix: z.string().min(1).optional(),
       controllerUrl: z.string().url().optional(),
       advertisedUrl: z.string().url().optional(),
       allowNetworkExposure: z.boolean().optional(),
@@ -142,15 +155,17 @@ server.registerTool(
   'dglab_connect',
   {
     title: 'Connect and pair DG-LAB',
-    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR. Network exposure must be explicitly allowed.',
+    description: 'Connect through a remote V4 relay or start/use the embedded Bun relay, then return an APP pairing QR as an image or terminal rendering followed by the plain-text connection URL. Network exposure must be explicitly allowed.',
     inputSchema: {
       mode: z.enum(['remote', 'embedded']).optional(),
       relay: z.string().url().optional(),
       bindHost: z.string().min(1).optional(),
       port: z.number().int().min(1).max(65_535).optional(),
+      prefix: z.string().min(1).optional(),
       controllerUrl: z.string().url().optional(),
       advertisedUrl: z.string().url().optional(),
       allowNetworkExposure: z.boolean().optional(),
+      qrOutput: z.enum(['image', 'terminal']).optional(),
     },
     annotations: { destructiveHint: false, idempotentHint: false },
   },
@@ -166,6 +181,7 @@ server.registerTool(
     } else {
       const hasOverride = input.bindHost !== undefined
         || input.port !== undefined
+        || input.prefix !== undefined
         || input.controllerUrl !== undefined
         || input.advertisedUrl !== undefined
         || input.allowNetworkExposure !== undefined;
@@ -176,11 +192,14 @@ server.registerTool(
       const urls = embeddedRelay.connectionUrls();
       connectionResult = await controller.connect(urls.controllerUrl, urls.advertisedUrl);
     }
-    const { qrPngBase64, ...connection } = connectionResult;
+    const { qrPngBase64, qrTerminal, ...connection } = connectionResult;
+    const qrContent = input.qrOutput === 'terminal'
+      ? { type: 'text' as const, text: qrTerminal }
+      : { type: 'image' as const, data: qrPngBase64, mimeType: 'image/png' as const };
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ mode, connection, embeddedRelay: embeddedRelay.status() }, null, 2) },
-        { type: 'image', data: qrPngBase64, mimeType: 'image/png' },
+        qrContent,
+        { type: 'text', text: `Connection URL: ${connection.appSocketUrl}` },
       ],
       structuredContent: { mode, connection, embeddedRelay: embeddedRelay.status() },
     };
@@ -191,7 +210,7 @@ server.registerTool(
   'dglab_status',
   {
     title: 'Inspect DG-LAB session',
-    description: 'Return the live relay state, attached APPs, devices, compatible waveforms, active selection, limits, and recent events. Does not expose the HTTP secret.',
+    description: 'Return the live relay state, attached APPs, devices, compatible waveforms, active selection, limits, and recent events.',
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   },
